@@ -80,7 +80,7 @@ class FolderEngine(
                 files = listOf(stored),
                 extras = mapOf(FolderBackup.FOLDER_PATH_KEY to path),
             )
-            storage.writeSpecialMeta(partial, meta)
+            storage.writeSpecialMeta(partial, meta, crypto?.spec)
             storage.commitPartial(partial, id)
             storage.prune(storage.folderDir(path), s.keepVersions)
             val warnings = buildList {
@@ -103,6 +103,10 @@ class FolderEngine(
 
     suspend fun restore(backup: FolderBackup, crypto: CryptoSession?, progress: ProgressSink): TaskOutcome {
         val path = backup.path ?: throw IOException("Backup does not record its folder")
+        // The path comes from the backup's metadata: never write anywhere a folder could not be
+        // chosen from in the first place.
+        if (normalize(path) != path) throw IOException("Backup records an invalid folder path")
+        validate(path)?.let { throw IOException("Cannot restore to $path: $it") }
         val file = backup.meta.files.firstOrNull() ?: throw IOException("Backup is empty")
         progress.step("Restoring $path", file.originalSize)
         val stats = if (useShell(path)) {

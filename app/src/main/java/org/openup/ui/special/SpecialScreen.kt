@@ -94,6 +94,9 @@ fun SpecialScreen(type: SpecialType, onBack: () -> Unit, onJobStarted: () -> Uni
     var restoreTarget by remember { mutableStateOf<SpecialBackup?>(null) }
     var deleteTarget by remember { mutableStateOf<SpecialBackup?>(null) }
     var busyNotice by remember { mutableIntStateOf(0) }
+    var unencryptedWarning by remember { mutableStateOf(false) }
+    val sensitive = type == SpecialType.MESSAGES || type == SpecialType.CALL_LOGS || type == SpecialType.WIFI
+    val startBackup: () -> Unit = { if (vm.backup()) onJobStarted() else busyNotice++ }
 
     LifecycleResumeEffect(type) {
         vm.refresh()
@@ -145,7 +148,7 @@ fun SpecialScreen(type: SpecialType, onBack: () -> Unit, onJobStarted: () -> Uni
                             }
                         }
                     }
-                    if ((type == SpecialType.WIFI || type == SpecialType.MESSAGES) && !hasPassword) {
+                    if (sensitive && !hasPassword) {
                         Text(
                             "Tip: set a backup password in Settings so this backup is encrypted.",
                             style = MaterialTheme.typography.bodySmall,
@@ -153,7 +156,7 @@ fun SpecialScreen(type: SpecialType, onBack: () -> Unit, onJobStarted: () -> Uni
                         )
                     }
                     Button(
-                        onClick = { if (vm.backup()) onJobStarted() else busyNotice++ },
+                        onClick = { if (sensitive && !hasPassword) unencryptedWarning = true else startBackup() },
                         enabled = !running && shizukuOk && permission.canBackup,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Back up now") }
@@ -176,6 +179,21 @@ fun SpecialScreen(type: SpecialType, onBack: () -> Unit, onJobStarted: () -> Uni
         }
     }
 
+    if (unencryptedWarning) {
+        val what = when (type) {
+            SpecialType.MESSAGES -> "your messages"
+            SpecialType.CALL_LOGS -> "your call history"
+            else -> "your Wi-Fi passwords"
+        }
+        ConfirmDialog(
+            "Back up without encryption?",
+            "No backup password is set, so $what will be saved unencrypted. Other apps that can access all files " +
+                "on this phone (or anyone with the USB drive) could read them. Set a password in Settings to encrypt backups.",
+            "Back up anyway",
+            onConfirm = startBackup,
+            onDismiss = { unencryptedWarning = false },
+        )
+    }
     restoreTarget?.let { b ->
         ConfirmDialog(
             "Restore ${type.title.lowercase()}?",

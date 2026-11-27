@@ -42,14 +42,17 @@ class AppSettingsOps(private val shell: ShellClient) {
             val r = shell.exec(*args.toTypedArray())
             if (r.isSuccess && !r.output.contains("Error", ignoreCase = true)) applied++ else failed++
         }
-        if (settings.accessibilityServices.isNotEmpty()) {
+        // Only services of this very app: a modified backup must not switch on another app's
+        // accessibility service (which can read the screen and act for the user).
+        val services = ownServices(pkg, settings.accessibilityServices)
+        if (services.isNotEmpty()) {
             val current = parseServiceList(
                 shell.exec(CMD, "settings", "--user", user, "get", "secure", ACCESSIBILITY_KEY).stdout
             )
-            val merged = LinkedHashSet(current).apply { addAll(settings.accessibilityServices) }
+            val merged = LinkedHashSet(current).apply { addAll(services) }
             val put = shell.exec(CMD, "settings", "--user", user, "put", "secure", ACCESSIBILITY_KEY, merged.joinToString(":"))
             val on = shell.exec(CMD, "settings", "--user", user, "put", "secure", "accessibility_enabled", "1")
-            if (put.isSuccess && on.isSuccess) applied += settings.accessibilityServices.size else failed += settings.accessibilityServices.size
+            if (put.isSuccess && on.isSuccess) applied += services.size else failed += services.size
         }
         if (settings.batteryOptimizationExempt) {
             val r = shell.exec(CMD, "deviceidle", "whitelist", "+$pkg")
@@ -101,6 +104,12 @@ class AppSettingsOps(private val shell: ShellClient) {
             }
             return result
         }
+
+        private val COMPONENT_REGEX = Regex("^[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+$")
+
+        /** Accessibility service components of [pkg] only, in a well-formed "package/class" form. */
+        fun ownServices(pkg: String, services: List<String>): List<String> =
+            services.filter { COMPONENT_REGEX.matches(it) && it.substringBefore('/') == pkg }.distinct()
 
         fun parseServiceList(value: String): List<String> {
             val v = value.trim()

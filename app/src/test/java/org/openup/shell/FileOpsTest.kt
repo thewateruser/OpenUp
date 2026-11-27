@@ -171,6 +171,57 @@ class FileOpsTest {
     }
 
     @Test
+    fun failedSwapIsUndoneInBothModes() {
+        val src = tmp.newFolder("srcSwap")
+        File(src, "dir").mkdirs()
+        File(src, "dir/a.txt").writeText("new a")
+        File(src, "b.txt").writeText("new b")
+        File(src, "c.txt").writeText("new c")
+        val (data, _) = archive(src)
+        for (merge in listOf(false, true)) {
+            for (failAt in 1..6) {
+                val dest = tmp.newFolder("destSwap-$merge-$failAt")
+                File(dest, "dir").mkdirs()
+                File(dest, "dir/a.txt").writeText("old a")
+                File(dest, "b.txt").writeText("old b")
+                File(dest, "keep.txt").writeText("old keep")
+                val before = contents(dest).mapValues { String(it.value) }
+                var moves = 0
+                val failing: (java.nio.file.Path, java.nio.file.Path) -> Unit = { from, to ->
+                    if (++moves == failAt) throw IOException("disk full")
+                    Files.move(from, to)
+                }
+                try {
+                    FileOps.untar(dest, ByteArrayInputStream(data), merge, failing)
+                    // Fewer moves than failAt: the swap simply succeeded.
+                    assertEquals("new a", File(dest, "dir/a.txt").readText())
+                    continue
+                } catch (e: IOException) {
+                    assertEquals("disk full", e.message)
+                }
+                assertEquals("merge=$merge failAt=$failAt", before, contents(dest).mapValues { String(it.value) })
+                assertNull(dest.listFiles()!!.firstOrNull { it.name.startsWith(FileOps.STAGING_PREFIX) })
+            }
+        }
+    }
+
+    @Test
+    fun refusesSymlinkedRestoreTarget() {
+        val real = tmp.newFolder("realTarget")
+        val link = File(tmp.root, "linkTarget")
+        Files.createSymbolicLink(link.toPath(), real.toPath())
+        val src = tmp.newFolder("srcLink")
+        File(src, "x").writeText("x")
+        val (data, _) = archive(src)
+        try {
+            FileOps.untar(link, ByteArrayInputStream(data))
+            fail("followed a symlinked target")
+        } catch (_: IOException) {
+        }
+        assertTrue(real.list()!!.isEmpty())
+    }
+
+    @Test
     fun rejectsPathTraversalAndEscapingLinks() {
         val bos = ByteArrayOutputStream()
         TarWriter(bos).use { w ->

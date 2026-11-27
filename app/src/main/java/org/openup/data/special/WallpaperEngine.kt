@@ -33,7 +33,7 @@ class WallpaperEngine(
     fun backup(crypto: CryptoSession?, progress: ProgressSink): TaskOutcome {
         progress.step("Backing up wallpapers")
         val wm = WallpaperManager.getInstance(context)
-        val summary = support.create(SpecialType.WALLPAPERS, { dir ->
+        val summary = support.create(SpecialType.WALLPAPERS, crypto, { dir ->
             val files = ArrayList<StoredFile>()
             val parts = ArrayList<String>()
             val extras = HashMap<String, String>()

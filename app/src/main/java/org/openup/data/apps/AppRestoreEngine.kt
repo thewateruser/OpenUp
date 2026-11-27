@@ -59,6 +59,16 @@ class AppRestoreEngine(
             meta.media?.takeIf { parts.media }?.let { Triple(it, AppPaths.media(pkg), "media") },
         )
         val installedNow = apps.get(pkg)
+        // Never hand an app's data, permissions or settings to an app from another developer that
+        // happens to use the same package name (Android itself refuses such updates).
+        if (installedNow != null && meta.signingCertSha256.isNotEmpty() && !apps.signedByAnyOf(pkg, meta.signingCertSha256)) {
+            warnings.add(
+                "The installed app is signed by a different developer than the backed up one, so its data, " +
+                    "permissions and settings were not restored"
+            )
+            val summary = if (done.isEmpty()) "Nothing restored" else "Restored " + done.joinToString(", ")
+            return TaskOutcome(summary, warnings)
+        }
         if (dataParts.isNotEmpty()) {
             if (installedNow == null) {
                 warnings.add("App is not installed, so its data was not restored")

@@ -138,6 +138,11 @@ fun SettingsScreen(onBack: () -> Unit) {
                 if (hasPassword) "New backups are encrypted with AES-256-GCM" else "Backups are not encrypted",
             ) { passwordDialog = true }
             if (hasPassword) ClickRow("Remove password", "New backups will not be encrypted") { removePassword = true }
+            SwitchRow(
+                "Restore backups from older versions",
+                "Allow encrypted backups made before OpenUp 1.1.2, which cannot be checked for changes. Leave off unless you need an old backup.",
+                s.allowUnsignedBackups,
+            ) { v -> c.settings.update { it.copy(allowUnsignedBackups = v) } }
 
             SectionTitle("Apps")
             SwitchRow("Skip cache folders", "Do not back up Android/data/<app>/cache", s.excludeCache) { v -> c.settings.update { it.copy(excludeCache = v) } }

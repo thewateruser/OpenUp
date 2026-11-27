@@ -114,6 +114,35 @@ class InstalledApps(private val context: Context) {
         return sigs.map { BackupIO.hex(md.digest(it.toByteArray())) }
     }
 
+    /**
+     * True if the installed [packageName] is signed with at least one of the certificates
+     * (SHA-256 fingerprints) recorded in a backup, i.e. it comes from the same developer.
+     */
+    fun signedByAnyOf(packageName: String, certSha256: List<String>): Boolean {
+        if (Build.VERSION.SDK_INT >= 28) {
+            val pm = context.packageManager
+            return certSha256.any { hex ->
+                val bytes = hexToBytes(hex) ?: return@any false
+                try {
+                    pm.hasSigningCertificate(packageName, bytes, PackageManager.CERT_INPUT_SHA256)
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        }
+        val installed = signingCertificates(packageName).toSet()
+        return certSha256.any { it.lowercase() in installed }
+    }
+
+    private fun hexToBytes(hex: String): ByteArray? {
+        if (hex.length != 64) return null
+        return try {
+            ByteArray(32) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+        } catch (_: NumberFormatException) {
+            null
+        }
+    }
+
     /** Runtime (dangerous) permissions that are currently granted to [packageName]. */
     @Suppress("DEPRECATION")
     fun grantedRuntimePermissions(packageName: String): List<String> {

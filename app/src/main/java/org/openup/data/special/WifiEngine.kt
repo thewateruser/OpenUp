@@ -25,7 +25,7 @@ class WifiEngine(
         val json = shell.wifiBackup()
         val count = JSONArray(json).length()
         if (count == 0) throw IOException("No saved Wi-Fi networks were found")
-        support.create(SpecialType.WIFI, { dir ->
+        support.create(SpecialType.WIFI, crypto, { dir ->
             val stored = support.writeFile(dir, "wifi.json", crypto, compress = true) { out ->
                 out.write(json.toByteArray(Charsets.UTF_8))
             }

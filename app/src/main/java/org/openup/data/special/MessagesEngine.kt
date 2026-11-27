@@ -67,7 +67,7 @@ class MessagesEngine(
             val mmsFile = File(work, "mms.jsonl")
             val mmsCount = mmsFile.bufferedWriter().use { w -> dumpMms(w, threads, partsDir, progress) }
             val summary = "$smsCount SMS, $mmsCount MMS"
-            support.create(SpecialType.MESSAGES, { dir ->
+            support.create(SpecialType.MESSAGES, crypto, { dir ->
                 val stored = support.writeFile(dir, "messages.tar", crypto, compress = true) { out ->
                     val tar = TarWriter(out)
                     for (f in listOf(smsFile, mmsFile)) f.inputStream().use { tar.putFile(f.name, f.length(), 0x1A4, 0, it) }

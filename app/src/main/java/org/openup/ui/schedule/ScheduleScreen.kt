@@ -37,6 +37,7 @@ fun ScheduleScreen(onBack: () -> Unit) {
     val c = LocalContext.current.container
     val settings by c.settings.state.collectAsStateWithLifecycle()
     val s = settings.schedule
+    val hasPassword by c.passwords.hasPassword.collectAsStateWithLifecycle()
 
     fun update(transform: (ScheduleSettings) -> ScheduleSettings) {
         c.settings.update { it.copy(schedule = transform(it.schedule)) }
@@ -75,6 +76,15 @@ fun ScheduleScreen(onBack: () -> Unit) {
             SwitchRow("Call logs", null, s.callLogs, enabled = s.enabled) { v -> update { it.copy(callLogs = v) } }
             SwitchRow("Wallpapers", null, s.wallpapers, enabled = s.enabled) { v -> update { it.copy(wallpapers = v) } }
             SwitchRow("Wi-Fi networks", "Needs Shizuku to be running", s.wifi, enabled = s.enabled) { v -> update { it.copy(wifi = v) } }
+            if (s.enabled && !hasPassword && (s.messages || s.callLogs || s.wifi)) {
+                Text(
+                    "No backup password is set: scheduled messages, call log and Wi-Fi backups are saved unencrypted. " +
+                        "Set a password in Settings to encrypt them.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
             Text(
                 "Shizuku stops when the phone restarts, so app and Wi-Fi backups are skipped until you start it again. " +
                     "Allow background activity on the home screen so Android does not delay or stop scheduled backups.",

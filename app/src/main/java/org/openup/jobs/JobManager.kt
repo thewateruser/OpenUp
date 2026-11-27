@@ -181,13 +181,14 @@ class JobManager(private val c: AppContainer) {
         return when (task) {
             is JobTask.BackupApp -> c.appBackup.backup(task.packageName, task.parts, crypto, sink)
             is JobTask.RestoreApp -> {
-                val backup = if (task.backupDir != null) {
-                    c.storage.readAppBackup(c.storage.node(task.backupDir))
-                        ?: throw IOException("The selected backup no longer exists or is unreadable")
+                val dir = if (task.backupDir != null) {
+                    c.storage.node(task.backupDir)
                 } else {
-                    c.storage.appBackups(task.packageName).firstOrNull() ?: throw IOException("No backup found")
+                    c.storage.appBackups(task.packageName).firstOrNull()?.dir ?: throw IOException("No backup found")
                 }
-                c.appRestore.restore(backup, task.parts, crypto, sink)
+                // Re-read and verify the metadata: it decides what the restore does.
+                val backup = c.storage.loadAppBackupForRestore(dir, crypto?.key, task.packageName, c.settings.current.allowUnsignedBackups)
+                c.appRestore.restore(backup, task.parts, crypto, sink).withIntegrityNote(dir, crypto)
             }
             is JobTask.BackupSpecial -> {
                 ensureSpecialPermissions(task.type, restore = false)
@@ -202,14 +203,14 @@ class JobManager(private val c: AppContainer) {
             }
             is JobTask.BackupFolder -> c.folders.backup(task.path, crypto, sink)
             is JobTask.RestoreFolder -> {
-                val backup = c.storage.readFolderBackup(c.storage.node(task.backupDir))
-                    ?: throw IOException("The selected backup no longer exists or is unreadable")
-                c.folders.restore(backup, crypto, sink)
+                val dir = c.storage.node(task.backupDir)
+                val backup = c.storage.loadFolderBackupForRestore(dir, crypto?.key, c.settings.current.allowUnsignedBackups)
+                c.folders.restore(backup, crypto, sink).withIntegrityNote(dir, crypto)
             }
             is JobTask.RestoreSpecial -> {
                 ensureSpecialPermissions(task.type, restore = true)
-                val backup = c.storage.readSpecialBackup(task.type, c.storage.node(task.backupDir))
-                    ?: throw IOException("Backup not found or unreadable")
+                val dir = c.storage.node(task.backupDir)
+                val backup = c.storage.loadSpecialBackupForRestore(task.type, dir, crypto?.key, c.settings.current.allowUnsignedBackups)
                 withContext(Dispatchers.IO) {
                     when (task.type) {
                         SpecialType.MESSAGES -> c.messages.restore(backup, crypto, sink).withRestrictedWarning()
@@ -217,10 +218,18 @@ class JobManager(private val c: AppContainer) {
                         SpecialType.WALLPAPERS -> c.wallpapers.restore(backup, crypto, sink)
                         SpecialType.WIFI -> c.wifi.restore(backup, crypto, sink)
                     }
-                }
+                }.withIntegrityNote(dir, crypto)
             }
         }
     }
+
+    /** With a password set, point out backups that cannot be checked for changes (not encrypted). */
+    private fun TaskOutcome.withIntegrityNote(dir: org.openup.data.location.StorageNode, crypto: CryptoSession?): TaskOutcome =
+        if (crypto != null && !c.storage.isSigned(dir)) {
+            copy(warnings = warnings + "This backup was made without a password, so OpenUp could not check that it was not changed since.")
+        } else {
+            this
+        }
 
     private fun TaskOutcome.withRestrictedWarning(): TaskOutcome =
         if (c.privileges.canReadRestrictedMessages() == false) {

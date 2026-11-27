@@ -23,7 +23,7 @@ class CallLogEngine(
 
     fun backup(crypto: CryptoSession?, progress: ProgressSink): TaskOutcome {
         progress.step("Backing up call logs")
-        val count = support.create(SpecialType.CALL_LOGS, { dir ->
+        val count = support.create(SpecialType.CALL_LOGS, crypto, { dir ->
             var n = 0
             val cursor = context.contentResolver.query(CallLog.Calls.CONTENT_URI, null, null, null, "${CallLog.Calls.DATE} ASC")
                 ?: throw IOException("Call log is not accessible")

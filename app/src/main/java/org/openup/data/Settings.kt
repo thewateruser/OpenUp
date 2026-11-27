@@ -46,6 +46,8 @@ data class AppSettings(
     val schedule: ScheduleSettings = ScheduleSettings(),
     /** Folders (absolute paths) that the user wants to back up. */
     val folders: List<String> = emptyList(),
+    /** Restore encrypted backups without a meta.json signature (made before 1.1.2). */
+    val allowUnsignedBackups: Boolean = false,
 )
 
 /** Persistent user settings, exposed as a [StateFlow]. */
@@ -95,6 +97,7 @@ class SettingsRepository(context: Context) {
                     List(arr.length()) { arr.getString(it) }
                 }.getOrNull()
             } ?: emptyList(),
+            allowUnsignedBackups = prefs.getBoolean("allowUnsigned", false),
         )
     }
 
@@ -127,6 +130,7 @@ class SettingsRepository(context: Context) {
             .putBoolean("sch_wifi", n.schedule.wifi)
             .putBoolean("sch_folders", n.schedule.folders)
             .putString("folders", org.json.JSONArray(n.folders.distinct()).toString())
+            .putBoolean("allowUnsigned", n.allowUnsignedBackups)
             .apply()
         _state.value = load()
     }

@@ -89,7 +89,7 @@ class AppBackupEngine(
                 permissions = if (parts.permissions) apps.grantedRuntimePermissions(packageName) else emptyList(),
                 settings = appSettings,
             )
-            storage.writeAppMeta(partial, meta)
+            storage.writeAppMeta(partial, meta, crypto?.spec)
             storage.commitPartial(partial, id)
             storage.prune(storage.appDir(packageName), s.keepVersions)
             val what = buildList {

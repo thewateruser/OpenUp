@@ -35,6 +35,12 @@ class AppSettingsOpsTest {
     }
 
     @Test
+    fun onlyTheAppsOwnAccessibilityServicesAreRestored() {
+        val services = listOf("com.a/.Svc", "com.evil/.Spy", "com.a/com.a.Other", "com.a.fake/.X", "garbage", "com.a/../x")
+        assertEquals(listOf("com.a/.Svc", "com.a/com.a.Other"), AppSettingsOps.ownServices("com.a", services))
+    }
+
+    @Test
     fun parsesAccessibilityList() {
         assertEquals(emptyList<String>(), AppSettingsOps.parseServiceList("null\n"))
         assertEquals(emptyList<String>(), AppSettingsOps.parseServiceList(""))

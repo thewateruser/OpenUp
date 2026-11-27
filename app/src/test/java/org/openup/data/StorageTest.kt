@@ -48,7 +48,7 @@ class StorageTest {
         assertTrue(File(s.root.file, ".nomedia").exists())
         val (id, partial) = s.newPartial(s.appDir("com.example"))
         assertTrue(partial.name.endsWith(BackupStorage.PARTIAL))
-        s.writeAppMeta(partial, meta("com.example", 1))
+        s.writeAppMeta(partial, meta("com.example", 1), null)
         assertTrue(s.appBackups("com.example").isEmpty())
         s.commitPartial(partial, id)
         val list = s.appBackups("com.example")
@@ -73,7 +73,7 @@ class StorageTest {
         val ids = listOf("20240101-000000", "20250101-000000", "20230101-000000", "20260101-000000")
         for (id in ids) {
             val d = dir.child(id).apply { mkdirs() }
-            s.writeAppMeta(d, meta("com.example", id.take(4).toLong()))
+            s.writeAppMeta(d, meta("com.example", id.take(4).toLong()), null)
         }
         s.prune(dir, 2)
         assertEquals(listOf("20260101-000000", "20250101-000000"), s.appBackups("com.example").map { it.id })
@@ -95,7 +95,7 @@ class StorageTest {
         for ((path, ids) in listOf(a to listOf("20250101-000000", "20260101-000000"), b to listOf("20240101-000000"))) {
             for (id in ids) {
                 val d = s.folderDir(path).child(id).apply { mkdirs() }
-                s.writeSpecialMeta(d, org.openup.data.model.SpecialBackupMeta(
+                s.writeSpecialMeta(d, encryption = null, meta = org.openup.data.model.SpecialBackupMeta(
                     type = org.openup.data.model.FolderBackup.TYPE,
                     backupTime = id.take(4).toLong(),
                     itemCount = 1,

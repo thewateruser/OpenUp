@@ -120,57 +120,126 @@ object FileOps {
      * Without [merge] the old contents are replaced; with [merge] files from the archive overwrite
      * files of the same name and everything else in [root] is kept.
      */
-    fun untar(root: File, input: InputStream, merge: Boolean = false): TarStats {
+    fun untar(root: File, input: InputStream, merge: Boolean = false): TarStats = untar(root, input, merge, ::movePath)
+
+    /** [mover] moves one entry to a path that does not exist yet (replaceable in tests). */
+    internal fun untar(root: File, input: InputStream, merge: Boolean, mover: (Path, Path) -> Unit): TarStats {
         val stats = TarStats()
         val rootPath = root.toPath()
+        if (Files.isSymbolicLink(rootPath)) throw IOException("Restore target $root is a link; refusing to follow it")
         if (!Files.isDirectory(rootPath)) {
             Files.createDirectories(rootPath)
         }
-        val stage = rootPath.resolve(STAGING_PREFIX + UUID.randomUUID().toString().substring(0, 8))
+        val id = UUID.randomUUID().toString().substring(0, 8)
+        val stage = rootPath.resolve(STAGING_PREFIX + id)
         Files.createDirectory(stage)
         try {
             extract(stage, input, stats)
-            // Archive is complete and valid: swap the contents.
-            if (merge) {
-                mergeInto(stage, rootPath)
-            } else {
-                Files.newDirectoryStream(rootPath).use { s -> s.toList() }.forEach { child ->
-                    if (child != stage) deleteRecursive(child)
-                }
-                Files.newDirectoryStream(stage).use { s -> s.toList() }.forEach { child ->
-                    moveReplacing(child, rootPath.resolve(child.fileName.toString()))
-                }
-            }
-            deleteRecursive(stage)
         } catch (t: Throwable) {
-            try {
-                deleteRecursive(stage)
-            } catch (_: IOException) {
-            }
+            deleteQuietly(stage)
             throw t
         }
+        // The archive is complete and valid: swap the contents. Every step is recorded so that a
+        // failure half way (e.g. storage full) can be undone and the previous data is never lost.
+        val saved = rootPath.resolve(STAGING_PREFIX + "old-" + id)
+        val journal = ArrayList<SwapStep>()
+        try {
+            Files.createDirectory(saved)
+            if (merge) {
+                mergeInto(stage, rootPath, saved, journal, mover)
+            } else {
+                Files.newDirectoryStream(rootPath).use { s -> s.toList() }
+                    .filter { it != stage && it != saved }
+                    .forEach { child ->
+                        val keep = saved.resolve(child.fileName.toString())
+                        mover(child, keep)
+                        journal.add(SwapStep.MovedAside(child, keep))
+                    }
+                Files.newDirectoryStream(stage).use { s -> s.toList() }.forEach { child ->
+                    val target = rootPath.resolve(child.fileName.toString())
+                    mover(child, target)
+                    journal.add(SwapStep.Added(target))
+                }
+            }
+        } catch (t: Throwable) {
+            val undone = rollback(journal)
+            deleteQuietly(stage)
+            if (undone) {
+                deleteQuietly(saved)
+                throw t
+            }
+            throw IOException("Restore failed and could not be fully undone; the previous data was kept in $saved", t)
+        }
+        deleteQuietly(saved)
+        deleteQuietly(stage)
         return stats
     }
 
-    private fun moveReplacing(src: Path, dest: Path) {
-        if (Files.exists(dest, LinkOption.NOFOLLOW_LINKS)) deleteRecursive(dest)
+    private sealed interface SwapStep {
+        /** [original] was moved to [savedAt] to make room. */
+        data class MovedAside(val original: Path, val savedAt: Path) : SwapStep
+
+        /** [target] was created by the restore. */
+        data class Added(val target: Path) : SwapStep
+    }
+
+    /** Undoes [journal] in reverse order. Returns false if something could not be put back. */
+    private fun rollback(journal: List<SwapStep>): Boolean {
+        var ok = true
+        for (step in journal.asReversed()) {
+            try {
+                when (step) {
+                    is SwapStep.Added -> deleteRecursive(step.target)
+                    is SwapStep.MovedAside -> {
+                        deleteRecursive(step.original)
+                        movePath(step.savedAt, step.original)
+                    }
+                }
+            } catch (_: Throwable) {
+                ok = false
+            }
+        }
+        return ok
+    }
+
+    private fun deleteQuietly(p: Path) {
+        try {
+            deleteRecursive(p)
+        } catch (_: IOException) {
+        }
+    }
+
+    /** Moves [src] to [dest] (which must not exist), copying if a plain rename is not possible. */
+    private fun movePath(src: Path, dest: Path) {
         try {
             Files.move(src, dest)
+        } catch (e: java.nio.file.FileAlreadyExistsException) {
+            throw e
         } catch (e: IOException) {
             copyRecursive(src, dest)
             deleteRecursive(src)
         }
     }
 
-    /** Moves everything from [src] into [dest], merging directories and replacing files. */
-    private fun mergeInto(src: Path, dest: Path) {
+    /**
+     * Moves everything from [src] into [dest], merging directories. Entries that get replaced are
+     * first moved to the same relative place below [saved].
+     */
+    private fun mergeInto(src: Path, dest: Path, saved: Path, journal: MutableList<SwapStep>, mover: (Path, Path) -> Unit) {
         Files.newDirectoryStream(src).use { s -> s.toList() }.forEach { child ->
-            val target = dest.resolve(child.fileName.toString())
-            val isDir = attrs(child).isDirectory
-            if (isDir && Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
-                mergeInto(child, target)
+            val name = child.fileName.toString()
+            val target = dest.resolve(name)
+            if (attrs(child).isDirectory && Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
+                mergeInto(child, target, saved.resolve(name), journal, mover)
             } else {
-                moveReplacing(child, target)
+                if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                    val keep = saved.resolve(name)
+                    Files.createDirectories(saved)
+                    mover(target, keep)
+                    journal.add(SwapStep.MovedAside(target, keep))
+                }
+                mover(child, target)
+                journal.add(SwapStep.Added(target))
             }
         }
     }

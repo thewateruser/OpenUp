@@ -21,6 +21,7 @@ internal class SpecialSupport(private val settings: SettingsRepository, private 
     /** Runs [block] inside a new partial backup folder, then writes metadata and commits. */
     fun <T> create(
         type: SpecialType,
+        crypto: CryptoSession?,
         block: (dir: StorageNode) -> Triple<List<StoredFile>, Pair<Int, String>, T>,
         extras: (T) -> Map<String, String> = { emptyMap() },
     ): T {
@@ -38,7 +39,7 @@ internal class SpecialSupport(private val settings: SettingsRepository, private 
                 files = files,
                 extras = extras(value),
             )
-            storage.writeSpecialMeta(partial, meta)
+            storage.writeSpecialMeta(partial, meta, crypto?.spec)
             storage.commitPartial(partial, id)
             storage.prune(storage.specialDir(type), settings.current.keepVersions)
             return value

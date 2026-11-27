@@ -87,6 +87,7 @@ OpenUp/
 │   └── com.example.notes/                 one folder per app
 │       └── 20261127-143000/               one folder per backup
 │           ├── meta.json                  description of the backup (plain text)
+│           ├── meta.sig                   signature of meta.json (only with a backup password)
 │           ├── icon.png                   app icon, shown for apps that are not installed
 │           ├── apk/
 │           │   ├── base.apk               the app itself
@@ -110,21 +111,24 @@ OpenUp/
 - Files larger than 2 GB are split into `name`, `name.part2`, `name.part3`, … so they fit on USB drives
   formatted as FAT32.
 - `meta.json` and `icon.png` are never encrypted, so OpenUp can list your backups without the password.
-  They show which apps you backed up and their permissions, but none of their data.
+  They show which apps you backed up and their permissions, but none of their data. With a password,
+  `meta.json` is signed (`meta.sig`), so a backup whose description was changed is refused on restore.
 
 ### What happens when you restore an app
 
 1. **App:** if the app is missing or older than the backup, the APK is installed silently (no confirmation
    per app). Its checksum is verified before the installation is finished. A newer or identical installed
-   version is left alone — Android does not allow downgrades.
+   version is left alone — Android does not allow downgrades. If the installed app is signed by a
+   different developer than the backed-up one, its data, permissions and settings are not restored.
 2. Before its data is restored, the app is stopped so it cannot write to its folders at the same time.
 3. **Data:** each archive is read, decrypted, decompressed and unpacked into a temporary folder inside the
    app's folder. Only after the whole archive was read and its checksum matched is the app's current data
    replaced with it (files that were not in the backup are removed, so the folder matches the backup).
-   If anything goes wrong (wrong password, damaged file, full storage), the current data stays exactly
-   as it was.
+   The old files are set aside during the swap and put back if it fails, so if anything goes wrong
+   (wrong password, damaged file, full storage) the current data stays as it was.
 4. **Permissions and settings:** runtime permissions are granted again, and usage access, accessibility
-   services, battery optimisation and the other special access are set back to how they were.
+   services, battery optimisation and the other special access are set back to how they were. Only the
+   app's own accessibility services are switched on.
 
 Other categories:
 
@@ -138,7 +142,10 @@ Other categories:
 ### Passwords and encryption
 
 With a backup password, every backup file except `meta.json` and `icon.png` is encrypted with AES-256-GCM
-(authenticated encryption that detects any change to the file). The key is derived from your password,
+(authenticated encryption that detects any change to the file), and `meta.json` is signed with a key
+derived from the password. Without a password nothing can be verified, so OpenUp asks before backing up
+messages, call logs or Wi-Fi passwords unencrypted. Encrypted backups made before version 1.1.2 have no
+signature; they are only restored if you turn on **Settings → Restore backups from older versions**. The key is derived from your password,
 which is stored on the phone in Android's secure key store so scheduled backups can run. If you forget the
 password, encrypted backups cannot be restored by anyone — there is no recovery.
 

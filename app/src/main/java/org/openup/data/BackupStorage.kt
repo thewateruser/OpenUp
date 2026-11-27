@@ -1,6 +1,8 @@
 package org.openup.data
 
 import kotlinx.serialization.json.Json
+import org.openup.core.crypto.PasswordKey
+import org.openup.core.io.EncryptionSpec
 import org.openup.data.location.LocalNode
 import org.openup.data.location.StorageNode
 import org.openup.data.location.readText
@@ -89,11 +91,77 @@ class BackupStorage(
 
     fun commitPartial(partial: StorageNode, id: String): StorageNode = partial.renameTo(id)
 
-    fun writeAppMeta(dir: StorageNode, meta: AppBackupMeta) =
-        dir.child(META).writeText(json.encodeToString(AppBackupMeta.serializer(), meta))
+    fun writeAppMeta(dir: StorageNode, meta: AppBackupMeta, encryption: EncryptionSpec?) =
+        writeMeta(dir, json.encodeToString(AppBackupMeta.serializer(), meta), encryption)
 
-    fun writeSpecialMeta(dir: StorageNode, meta: SpecialBackupMeta) =
-        dir.child(META).writeText(json.encodeToString(SpecialBackupMeta.serializer(), meta))
+    fun writeSpecialMeta(dir: StorageNode, meta: SpecialBackupMeta, encryption: EncryptionSpec?) =
+        writeMeta(dir, json.encodeToString(SpecialBackupMeta.serializer(), meta), encryption)
+
+    /** Writes meta.json and, for encrypted backups, its signature (see [MetaSignature]). */
+    private fun writeMeta(dir: StorageNode, text: String, encryption: EncryptionSpec?) {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        dir.child(META).openOutput().use { it.write(bytes) }
+        if (encryption != null) {
+            dir.child(MetaSignature.FILE).writeText(json.encodeToString(MetaSignature.Sig.serializer(), MetaSignature.sign(bytes, encryption)))
+        }
+    }
+
+    /**
+     * Reads meta.json again for a restore and checks it (see [MetaSignature.verify]). The returned
+     * bytes are what the restore must use, so a file swapped after listing is never trusted.
+     */
+    private fun verifiedMeta(dir: StorageNode, key: PasswordKey?, allowUnsigned: Boolean, claimsEncrypted: (ByteArray) -> Boolean): ByteArray {
+        val bytes = try {
+            dir.child(META).openInput().use { it.readBytes() }
+        } catch (e: IOException) {
+            throw IOException("The selected backup no longer exists or is unreadable", e)
+        }
+        val sigNode = dir.child(MetaSignature.FILE)
+        val sig = if (sigNode.exists()) {
+            try {
+                json.decodeFromString(MetaSignature.Sig.serializer(), sigNode.readText())
+            } catch (e: Exception) {
+                throw IOException("Corrupted backup signature", e)
+            }
+        } else {
+            null
+        }
+        val encrypted = try {
+            claimsEncrypted(bytes)
+        } catch (e: Exception) {
+            throw IOException("The backup's metadata is unreadable", e)
+        }
+        MetaSignature.verify(bytes, sig, encrypted, key, allowUnsigned)
+        return bytes
+    }
+
+    /** True if the backup in [dir] carries a signature (i.e. was made with a password). */
+    fun isSigned(dir: StorageNode): Boolean = try {
+        dir.child(MetaSignature.FILE).exists()
+    } catch (_: IOException) {
+        false
+    }
+
+    fun loadAppBackupForRestore(dir: StorageNode, key: PasswordKey?, expectedPackage: String, allowUnsigned: Boolean = false): AppBackup {
+        val bytes = verifiedMeta(dir, key, allowUnsigned) { json.decodeFromString(AppBackupMeta.serializer(), it.toString(Charsets.UTF_8)).encrypted }
+        val meta = json.decodeFromString(AppBackupMeta.serializer(), bytes.toString(Charsets.UTF_8))
+        if (meta.packageName != expectedPackage) throw IOException("This backup belongs to ${meta.packageName}, not $expectedPackage")
+        return AppBackup(dir.name, dir, meta)
+    }
+
+    fun loadSpecialBackupForRestore(type: SpecialType, dir: StorageNode, key: PasswordKey?, allowUnsigned: Boolean = false): SpecialBackup {
+        val bytes = verifiedMeta(dir, key, allowUnsigned) { json.decodeFromString(SpecialBackupMeta.serializer(), it.toString(Charsets.UTF_8)).encrypted }
+        val meta = json.decodeFromString(SpecialBackupMeta.serializer(), bytes.toString(Charsets.UTF_8))
+        if (meta.type != type.dirName) throw IOException("This is not a ${type.title.lowercase()} backup")
+        return SpecialBackup(type, dir.name, dir, meta)
+    }
+
+    fun loadFolderBackupForRestore(dir: StorageNode, key: PasswordKey?, allowUnsigned: Boolean = false): FolderBackup {
+        val bytes = verifiedMeta(dir, key, allowUnsigned) { json.decodeFromString(SpecialBackupMeta.serializer(), it.toString(Charsets.UTF_8)).encrypted }
+        val meta = json.decodeFromString(SpecialBackupMeta.serializer(), bytes.toString(Charsets.UTF_8))
+        if (meta.type != FolderBackup.TYPE || meta.extras[FolderBackup.FOLDER_PATH_KEY] == null) throw IOException("This is not a folder backup")
+        return FolderBackup(dir.name, dir, meta)
+    }
 
     /** Candidate version folders, newest first. Folders without valid metadata are skipped by the readers. */
     private fun versionDirs(parent: StorageNode): List<StorageNode> =
@@ -101,7 +169,11 @@ class BackupStorage(
             .sortedByDescending { it.name }
 
     fun readAppBackup(dir: StorageNode): AppBackup? = try {
-        AppBackup(dir.name, dir, json.decodeFromString(AppBackupMeta.serializer(), dir.child(META).readText()))
+        val meta = json.decodeFromString(AppBackupMeta.serializer(), dir.child(META).readText())
+        // A backup must describe the app whose folder it is in.
+        val folderPackage = dir.parent?.name
+        if (!isSafeName(meta.packageName) || (folderPackage != null && folderPackage != meta.packageName)) null
+        else AppBackup(dir.name, dir, meta)
     } catch (_: Exception) {
         null
     }
