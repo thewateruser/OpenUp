@@ -57,7 +57,108 @@ Backups are stored in `/storage/emulated/0/OpenUp` by default. To keep them off 
 on the drive. Files larger than 2 GB are split into parts, so FAT32 formatted drives work too. If the drive
 is not plugged in, backups stop with a clear message and scheduled backups skip that run.
 
-## How it works
+## Your backups, explained
+
+Nothing about your backups is hidden: they are ordinary files in a folder you choose, in standard formats
+you can open on a computer.
+
+### What happens when you back up an app
+
+1. OpenUp creates a new folder for this backup, named after the date and time (UTC), for example
+   `20261127-143000`. While the backup runs, the folder is called `20261127-143000.partial`.
+2. The **APK** (and any split APKs) are copied as they are. They are already compressed, so OpenUp does
+   not compress them again.
+3. The app's folders on shared storage — `Android/data`, `Android/obb` and `Android/media` — are each packed
+   into one archive. Shizuku lets OpenUp read these folders, which normal apps cannot. Cache folders are
+   skipped by default.
+4. Each archive is compressed (Zstandard) and, if you set a password, encrypted.
+5. OpenUp writes `meta.json` with everything it needs to restore: app name, version, which store installed
+   it, the app's signing certificates, granted permissions, app settings (usage access, accessibility,
+   battery and other special access) and the list of files with their sizes and SHA-256 checksums.
+6. Only when everything was written successfully is the folder renamed from `.partial` to its final
+   name. A backup that was interrupted (phone off, drive unplugged) is never mistaken for a good one.
+7. Older backups of the same app are deleted, keeping the number you chose in Settings (2 by default).
+
+### What the files look like
+
+```
+OpenUp/
+├── apps/
+│   └── com.example.notes/                 one folder per app
+│       └── 20261127-143000/               one folder per backup
+│           ├── meta.json                  description of the backup (plain text)
+│           ├── icon.png                   app icon, shown for apps that are not installed
+│           ├── apk/
+│           │   ├── base.apk               the app itself
+│           │   └── split_config.arm64_v8a.apk
+│           ├── extdata.tar.zst            Android/data/com.example.notes
+│           ├── obb.tar.zst                Android/obb/com.example.notes (games' extra files)
+│           └── media.tar.zst              Android/media/com.example.notes
+├── messages/20261127-143500/   meta.json, messages.tar.zst   (sms.jsonl, mms.jsonl, parts/…)
+├── calllogs/20261127-143500/   meta.json, calllogs.jsonl.zst
+├── wallpapers/20261127-143500/ meta.json, home.img, lock.img
+├── wifi/20261127-143500/       meta.json, wifi.json.zst
+└── folders/Documents_1a2b3c4d5e/20261127-143500/  meta.json, folder.tar.zst
+```
+
+- `.tar` is a normal tar archive, `.zst` means it is compressed with Zstandard, and `.enc` is added to every
+  file that is encrypted (for example `extdata.tar.zst.enc`, `base.apk.enc`).
+- Messages and call logs are stored as JSON, one message or call per line; MMS pictures and other
+  attachments are stored as separate files inside the archive.
+- Wallpapers are the original image files. Wi-Fi networks are JSON including their passwords, so set a
+  backup password if you back them up.
+- Files larger than 2 GB are split into `name`, `name.part2`, `name.part3`, … so they fit on USB drives
+  formatted as FAT32.
+- `meta.json` and `icon.png` are never encrypted, so OpenUp can list your backups without the password.
+  They show which apps you backed up and their permissions, but none of their data.
+
+### What happens when you restore an app
+
+1. **App:** if the app is missing or older than the backup, the APK is installed silently (no confirmation
+   per app). Its checksum is verified before the installation is finished. A newer or identical installed
+   version is left alone — Android does not allow downgrades.
+2. Before its data is restored, the app is stopped so it cannot write to its folders at the same time.
+3. **Data:** each archive is read, decrypted, decompressed and unpacked into a temporary folder inside the
+   app's folder. Only after the whole archive was read and its checksum matched is the app's current data
+   replaced with it (files that were not in the backup are removed, so the folder matches the backup).
+   If anything goes wrong (wrong password, damaged file, full storage), the current data stays exactly
+   as it was.
+4. **Permissions and settings:** runtime permissions are granted again, and usage access, accessibility
+   services, battery optimisation and the other special access are set back to how they were.
+
+Other categories:
+
+- **Messages** and **call logs** are added to what is already on the phone. Messages and calls that already
+  exist are skipped, so restoring twice does not create duplicates, and nothing is deleted.
+- **Wallpapers** replace the current home and lock screen wallpapers.
+- **Wi-Fi networks** are added (or updated if a network with the same name already exists).
+- **Folders** are merged back into their original location: files from the backup overwrite files with the
+  same name, and other files in the folder are kept.
+
+### Passwords and encryption
+
+With a backup password, every backup file except `meta.json` and `icon.png` is encrypted with AES-256-GCM
+(authenticated encryption that detects any change to the file). The key is derived from your password,
+which is stored on the phone in Android's secure key store so scheduled backups can run. If you forget the
+password, encrypted backups cannot be restored by anyone — there is no recovery.
+
+### Opening a backup without OpenUp
+
+Unencrypted backups only need standard tools on a computer:
+
+```bash
+zstd -d extdata.tar.zst
+```
+
+```bash
+tar -xf extdata.tar
+```
+
+For a split file, join the parts first (`cat file file.part2 file.part3 > joined`). Encrypted files can only
+be read by OpenUp; their format is documented in
+[`StreamCrypto.kt`](app/src/main/java/org/openup/core/crypto/StreamCrypto.kt).
+
+### Technical details
 
 OpenUp binds a [Shizuku user service](https://github.com/RikkaApps/Shizuku-API#userservice):
 a small piece of OpenUp's own code that Shizuku runs in a separate process as the shell user
@@ -69,29 +170,6 @@ through pipes, so nothing has to fit in memory or be staged in temporary files:
 backup:  shell process: walk Android/data/<app> → tar ─pipe→ app: zstd → AES-GCM → file + SHA-256
 restore: app: file → AES-GCM → zstd → verify ─pipe→ shell process: tar → staging dir → swap
 ```
-
-## Backup folder format
-
-```
-OpenUp/
-  apps/<package>/<yyyyMMdd-HHmmss>/
-    meta.json                  app label, version, installer, signing certificates, permissions, file list
-    icon.png
-    apk/base.apk[.enc]         split_*.apk[.enc] for split APKs
-    extdata.tar[.zst][.enc]    Android/data/<package>
-    obb.tar[.zst][.enc]        Android/obb/<package>
-    media.tar[.zst][.enc]      Android/media/<package>
-  messages/<id>/  meta.json, messages.tar[.zst][.enc]   (sms.jsonl, mms.jsonl, parts/*)
-  calllogs/<id>/  meta.json, calllogs.jsonl[.zst][.enc]
-  wallpapers/<id>/ meta.json, home.img[.enc], lock.img[.enc]
-  wifi/<id>/      meta.json, wifi.json[.zst][.enc]
-  folders/<name>_<hash>/<id>/ meta.json (original path), folder.tar[.zst][.enc]
-
-Files over 2 GB are split: <file>, <file>.part2, <file>.part3, … (concatenate them to get the original).
-```
-
-Unencrypted archives are standard POSIX tar files (compressed with standard zstd), so they can be
-inspected with ordinary tools: `zstd -d extdata.tar.zst && tar -tf extdata.tar`.
 
 ## Building
 

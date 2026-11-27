@@ -147,6 +147,30 @@ class FileOpsTest {
     }
 
     @Test
+    fun errorReportedAtEndOfStreamKeepsExistingData() {
+        val src = tmp.newFolder("srcLate")
+        tree(src)
+        val (data, _) = archive(src)
+        val dest = tmp.newFolder("destLate")
+        File(dest, "keep.txt").writeText("precious")
+        // Like the checksum check or the pipe's close status: the error only shows up at the very end.
+        val failingAtEof = object : java.io.FilterInputStream(ByteArrayInputStream(data)) {
+            override fun read(): Int = super.read().also { if (it < 0) throw IOException("checksum mismatch") }
+            override fun read(b: ByteArray, off: Int, len: Int): Int =
+                super.read(b, off, len).also { if (it < 0) throw IOException("checksum mismatch") }
+        }
+        for (merge in listOf(false, true)) {
+            try {
+                FileOps.untar(dest, failingAtEof, merge)
+                fail("late error ignored")
+            } catch (e: IOException) {
+                assertEquals("checksum mismatch", e.message)
+            }
+            assertEquals(listOf("keep.txt"), dest.list()!!.toList())
+        }
+    }
+
+    @Test
     fun rejectsPathTraversalAndEscapingLinks() {
         val bos = ByteArrayOutputStream()
         TarWriter(bos).use { w ->

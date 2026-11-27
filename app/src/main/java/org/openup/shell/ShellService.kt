@@ -5,6 +5,7 @@ import android.os.ParcelFileDescriptor
 import android.os.Process
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FilterInputStream
 import java.io.InputStream
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
@@ -66,7 +67,15 @@ class ShellService : IShellService.Stub() {
 
     private fun extract(dirPath: String?, input: ParcelFileDescriptor?, merge: Boolean): Bundle = guard {
         requireNotNull(input) { "input is null" }
-        ParcelFileDescriptor.AutoCloseInputStream(input).use { stream ->
+        ParcelFileDescriptor.AutoCloseInputStream(input).use { raw ->
+            // The app sends the archive through a "reliable" pipe and closes it with an error if
+            // anything failed on its side, including the final checksum check. Checking that at the
+            // end of the stream makes the restore abort before the existing data is replaced.
+            val stream = object : FilterInputStream(raw) {
+                override fun read(): Int = super.read().also { if (it < 0) input.checkError() }
+                override fun read(b: ByteArray, off: Int, len: Int): Int =
+                    super.read(b, off, len).also { if (it < 0) input.checkError() }
+            }
             val stats = FileOps.untar(File(requireNotNull(dirPath)), stream, merge)
             Bundle().apply {
                 putInt(KEY_FILES, stats.files)

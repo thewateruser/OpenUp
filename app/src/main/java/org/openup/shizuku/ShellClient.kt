@@ -20,6 +20,7 @@ import org.openup.BuildConfig
 import org.openup.shell.IShellService
 import org.openup.shell.ShellService
 import rikka.shizuku.Shizuku
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -228,7 +229,9 @@ class ShellClient(private val shizuku: ShizukuManager, private val packageName: 
         withContext(Dispatchers.IO) {
             val s = service()
             coroutineScope {
-                val pipe = ParcelFileDescriptor.createPipe()
+                // A reliable pipe carries a close status: the shell process only replaces existing
+                // data if this side closed it without an error.
+                val pipe = ParcelFileDescriptor.createReliablePipe()
                 val readSide = pipe[0]
                 val writeSide = pipe[1]
                 val callResult = async(Dispatchers.IO) {
@@ -241,8 +244,19 @@ class ShellClient(private val shizuku: ShizukuManager, private val packageName: 
                     }
                 }
                 val producerError = runCatching {
-                    ParcelFileDescriptor.AutoCloseOutputStream(writeSide).use { producer(it) }
+                    // Not closed by itself: the descriptor is closed below, with or without an error.
+                    val out = FileOutputStream(writeSide.fileDescriptor)
+                    producer(out)
+                    out.flush()
                 }.exceptionOrNull()
+                try {
+                    if (producerError == null) {
+                        writeSide.close()
+                    } else {
+                        writeSide.closeWithError(producerError.message ?: producerError.javaClass.simpleName)
+                    }
+                } catch (_: IOException) {
+                }
                 val result = callResult.await()
                 val serviceError = result.getString(ShellService.KEY_ERROR)
                 if (producerError != null) {
