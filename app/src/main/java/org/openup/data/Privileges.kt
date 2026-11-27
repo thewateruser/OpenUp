@@ -63,6 +63,42 @@ class Privileges(private val context: Context, private val shell: ShellClient) {
 
     fun hasSms() = has(Manifest.permission.READ_SMS) && canWriteSms()
 
+    /**
+     * Android 17 marks end-to-end encrypted RCS messages as "restricted" in the message database;
+     * only the default SMS app, or an app holding the READ_RESTRICTED_MESSAGES app-op, can read them.
+     * Returns null when this Android version has no such op (nothing is restricted), otherwise
+     * whether OpenUp may read restricted messages.
+     */
+    fun canReadRestrictedMessages(): Boolean? =
+        opMode(OPSTR_READ_RESTRICTED_MESSAGES)?.let { it == AppOpsManager.MODE_ALLOWED }
+
+    /** Lets OpenUp read encrypted RCS chats without becoming the default SMS app (Android 17+). */
+    suspend fun grantRestrictedMessages(): Boolean {
+        if (canReadRestrictedMessages() != false) return true
+        shell.exec(CMD, "appops", "set", "--user", user, pkg, "READ_RESTRICTED_MESSAGES", "allow")
+        if (canReadRestrictedMessages() == true) return true
+        // Fall back to a uid-wide mode in case the platform checks the op by uid.
+        shell.exec(CMD, "appops", "set", "--user", user, "--uid", pkg, "READ_RESTRICTED_MESSAGES", "allow")
+        return canReadRestrictedMessages() == true
+    }
+
+    /** Mode of [op] for OpenUp, or null if this Android version does not know the op. */
+    @Suppress("DEPRECATION")
+    private fun opMode(op: String): Int? {
+        val ops = context.getSystemService(AppOpsManager::class.java) ?: return null
+        return try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                ops.unsafeCheckOpNoThrow(op, Process.myUid(), pkg)
+            } else {
+                ops.checkOpNoThrow(op, Process.myUid(), pkg)
+            }
+        } catch (_: IllegalArgumentException) {
+            null // unknown op on this release
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     @Suppress("DEPRECATION")
     fun canWriteSms(): Boolean {
         val ops = context.getSystemService(AppOpsManager::class.java) ?: return false
@@ -81,5 +117,6 @@ class Privileges(private val context: Context, private val shell: ShellClient) {
     companion object {
         private const val CMD = "/system/bin/cmd"
         private const val OPSTR_WRITE_SMS = "android:write_sms"
+        private const val OPSTR_READ_RESTRICTED_MESSAGES = "android:read_restricted_messages"
     }
 }

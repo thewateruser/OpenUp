@@ -69,8 +69,8 @@ import org.openup.ui.components.formatRelative
 import java.io.File
 
 private fun description(type: SpecialType) = when (type) {
-    SpecialType.MESSAGES -> "Backs up all SMS and MMS (including pictures and other attachments), and RCS chats that your " +
-        "messaging app keeps in Android's message database. " +
+    SpecialType.MESSAGES -> "Backs up all SMS, MMS (including pictures and other attachments) and RCS chats – also " +
+        "end-to-end encrypted RCS chats on Android 17, through Shizuku, without making OpenUp the default SMS app. " +
         "Restoring skips messages that already exist, so it is safe to restore more than once."
     SpecialType.CALL_LOGS -> "Backs up your call history. Restoring skips calls that already exist."
     SpecialType.WALLPAPERS -> "Backs up the home and lock screen wallpapers."
@@ -153,7 +153,7 @@ fun SpecialScreen(type: SpecialType, onBack: () -> Unit, onJobStarted: () -> Uni
                     }
                     Button(
                         onClick = { if (vm.backup()) onJobStarted() else busyNotice++ },
-                        enabled = !running && shizukuOk && (permission.ok || type == SpecialType.MESSAGES && permission.runtime.isEmpty()),
+                        enabled = !running && shizukuOk && permission.canBackup,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Back up now") }
                 }
@@ -167,7 +167,7 @@ fun SpecialScreen(type: SpecialType, onBack: () -> Unit, onJobStarted: () -> Uni
             items(backups, key = { it.dir.path }) { b ->
                 SpecialBackupCard(
                     b,
-                    restoreEnabled = !running && shizukuOk && permission.ok,
+                    restoreEnabled = !running && shizukuOk && permission.canRestore,
                     onRestore = { restoreTarget = b },
                     onDelete = { deleteTarget = b },
                 )

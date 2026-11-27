@@ -306,10 +306,11 @@ class MessagesEngine(
 
     private fun insertMms(o: JSONObject, allowed: Set<String>, partsDir: File, threadId: (Set<String>) -> Long?): Boolean {
         val addrs = o.optJSONArray(KEY_ADDRESSES) ?: JSONArray()
-        val addressList = (0 until addrs.length()).mapNotNull { addrs.optJSONObject(it)?.optString("address") }
-            .filter { it.isNotBlank() && it != "insert-address-token" }
+        val typedAddresses = (0 until addrs.length()).mapNotNull { i ->
+            addrs.optJSONObject(i)?.let { a -> a.optInt("type") to a.optString("address") }
+        }
         val values = SpecialSupport.jsonToValues(o, allowed)
-        val tid = threadId(recipientsOf(o, null).ifEmpty { addressList.toSet() })
+        val tid = threadId(recipientsOf(o, null).ifEmpty { mmsFallbackRecipients(o.optInt(Telephony.Mms.MESSAGE_BOX), typedAddresses) })
         if (tid != null) values.put(Telephony.Mms.THREAD_ID, tid)
         val uri = try {
             cr.insert(Telephony.Mms.CONTENT_URI, values)

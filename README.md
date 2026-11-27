@@ -17,7 +17,7 @@ and restore much more than a normal app — **without root**.
 | **Media** (`Android/media/<app>`) | ✅ | ✅ | |
 | **Permissions & app settings** | ✅ | ✅ | Runtime permissions, usage access, accessibility services, battery optimisation (unrestricted/restricted) and other special access (display over other apps, modify system settings, install unknown apps, all files access, alarms, picture-in-picture, media management, full-screen notifications). Notification settings and the SSAID need root. |
 | **Batch restore** | ✅ | ✅ | Any number of apps at once, without a confirmation per app. |
-| **Messages** (SMS, MMS with attachments, RCS) | ✅ | ✅ | No need to become the default SMS app: OpenUp allows itself to write SMS through Shizuku. RCS chats are included when the messaging app keeps them in Android's message database. Duplicates are skipped. |
+| **Messages** (SMS, MMS with attachments, RCS) | ✅ | ✅ | No need to become the default SMS app: OpenUp allows itself to write SMS through Shizuku. RCS chats (stored by Google Messages as MMS) are included, and on Android 17 also end-to-end encrypted RCS chats: Shizuku grants OpenUp the `READ_RESTRICTED_MESSAGES` app-op, so scheduled backups include them without prompts. Duplicates are skipped. |
 | **Call logs** | ✅ | ✅ | Duplicates are skipped. Voicemail entries cannot be restored by third-party apps. |
 | **Folders** | ✅ | ✅ | Any folder on internal storage or an SD card, including inside `Android/data` and `Android/obb`. Restores merge into the folder (same names are overwritten, other files kept). Folders outside `Android/data`/`obb` also work without Shizuku. |
 | **Wallpapers** (home + lock) | ✅ | ✅ | Live wallpapers are recorded by name only. |
@@ -106,6 +106,9 @@ with `storeFile`, `storePassword`, `keyAlias` and `keyPassword`.
   (Android does not allow downgrades).
 - Shizuku must be running for app and Wi-Fi backups. Scheduled backups skip those parts while it is not running.
 - Restoring messages requires that Android lets OpenUp write SMS (set automatically through Shizuku).
+- Restored end-to-end encrypted RCS messages come back as normal messages (without Android 17's "restricted" marker).
+- A Google Messages bug (since about May/June 2026) stops it from saving *sent* RCS messages to Android's message
+  database; no backup app can see those until Google fixes it.
 
 ## License
 

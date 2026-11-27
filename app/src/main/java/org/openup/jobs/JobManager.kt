@@ -185,7 +185,7 @@ class JobManager(private val c: AppContainer) {
                 ensureSpecialPermissions(task.type, restore = false)
                 withContext(Dispatchers.IO) {
                     when (task.type) {
-                        SpecialType.MESSAGES -> c.messages.backup(crypto, sink)
+                        SpecialType.MESSAGES -> c.messages.backup(crypto, sink).withRestrictedWarning()
                         SpecialType.CALL_LOGS -> c.callLogs.backup(crypto, sink)
                         SpecialType.WALLPAPERS -> c.wallpapers.backup(crypto, sink)
                         SpecialType.WIFI -> c.wifi.backup(crypto, sink)
@@ -204,7 +204,7 @@ class JobManager(private val c: AppContainer) {
                     ?: throw IOException("Backup not found or unreadable")
                 withContext(Dispatchers.IO) {
                     when (task.type) {
-                        SpecialType.MESSAGES -> c.messages.restore(backup, crypto, sink)
+                        SpecialType.MESSAGES -> c.messages.restore(backup, crypto, sink).withRestrictedWarning()
                         SpecialType.CALL_LOGS -> c.callLogs.restore(backup, crypto, sink)
                         SpecialType.WALLPAPERS -> c.wallpapers.restore(backup, crypto, sink)
                         SpecialType.WIFI -> c.wifi.restore(backup, crypto, sink)
@@ -213,6 +213,13 @@ class JobManager(private val c: AppContainer) {
             }
         }
     }
+
+    private fun TaskOutcome.withRestrictedWarning(): TaskOutcome =
+        if (c.privileges.canReadRestrictedMessages() == false) {
+            copy(warnings = warnings + "End-to-end encrypted RCS chats could not be read. Start Shizuku and run this again to include them.")
+        } else {
+            this
+        }
 
     private suspend fun ensureSpecialPermissions(type: SpecialType, restore: Boolean) {
         val p = c.privileges
@@ -223,6 +230,8 @@ class JobManager(private val c: AppContainer) {
                 if (!p.has(android.Manifest.permission.READ_SMS)) {
                     throw IOException("OpenUp needs permission to read SMS. Grant it on the Messages screen.")
                 }
+                // Encrypted RCS chats (Android 17+). Without the op they are skipped with a warning.
+                if (p.canReadRestrictedMessages() == false && shizukuReady) p.grantRestrictedMessages()
                 if (restore) {
                     if (!p.canWriteSms() && shizukuReady) p.grantSmsWrite()
                     if (!p.canWriteSms()) throw IOException("OpenUp is not allowed to write SMS. Start Shizuku and try again.")

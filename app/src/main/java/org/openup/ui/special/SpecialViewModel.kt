@@ -17,7 +17,13 @@ import org.openup.jobs.JobRequest
 import org.openup.jobs.JobTask
 import org.openup.shizuku.ShizukuStatus
 
-data class PermissionState(val ok: Boolean, val text: String, val runtime: List<String> = emptyList())
+data class PermissionState(
+    val ok: Boolean,
+    val text: String,
+    val runtime: List<String> = emptyList(),
+    val canBackup: Boolean = ok,
+    val canRestore: Boolean = ok,
+)
 
 class SpecialViewModel(app: Application, val type: SpecialType) : AndroidViewModel(app) {
     private val c = app.container
@@ -56,10 +62,22 @@ class SpecialViewModel(app: Application, val type: SpecialType) : AndroidViewMod
             SpecialType.MESSAGES -> {
                 val read = p.has(Manifest.permission.READ_SMS)
                 val write = p.canWriteSms()
+                // null: this Android version has no restricted (end-to-end encrypted RCS) messages.
+                val rcs = p.canReadRestrictedMessages()
                 when {
-                    read && write -> PermissionState(true, "OpenUp can read and restore messages")
-                    read -> PermissionState(false, "Reading works. Restoring needs Shizuku to allow writing SMS.", emptyList())
-                    else -> PermissionState(false, "OpenUp needs access to your messages", listOf(Manifest.permission.READ_SMS))
+                    !read -> PermissionState(false, "OpenUp needs access to your messages", listOf(Manifest.permission.READ_SMS))
+                    !write || rcs == false -> PermissionState(
+                        ok = false,
+                        text = buildString {
+                            append("Backing up works.")
+                            if (rcs == false) append(" End-to-end encrypted RCS chats need Shizuku to be included.")
+                            if (!write) append(" Restoring needs Shizuku to allow writing SMS.")
+                        },
+                        canBackup = true,
+                        canRestore = write,
+                    )
+                    rcs == true -> PermissionState(true, "OpenUp can read and restore SMS, MMS and RCS, including end-to-end encrypted chats")
+                    else -> PermissionState(true, "OpenUp can read and restore messages")
                 }
             }
             SpecialType.CALL_LOGS -> if (p.hasCallLog()) {
@@ -89,6 +107,7 @@ class SpecialViewModel(app: Application, val type: SpecialType) : AndroidViewMod
                     SpecialType.MESSAGES -> {
                         c.privileges.grantSmsRead()
                         c.privileges.grantSmsWrite()
+                        c.privileges.grantRestrictedMessages()
                     }
                     SpecialType.CALL_LOGS -> c.privileges.grantCallLog()
                     SpecialType.WALLPAPERS -> c.privileges.grantStorageAccess()
