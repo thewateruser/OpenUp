@@ -53,7 +53,7 @@ class AppDetailViewModel(app: Application, val packageName: String) : AndroidVie
         viewModelScope.launch {
             val (i, b) = withContext(Dispatchers.IO) {
                 c.installedApps.get(packageName) to
-                    (if (c.privileges.hasStorageAccess()) c.storage.appBackups(packageName) else emptyList())
+                    (if (c.backupsReadable()) c.storage.appBackups(packageName) else emptyList())
             }
             _installed.value = i
             _backups.value = b
@@ -83,7 +83,7 @@ class AppDetailViewModel(app: Application, val packageName: String) : AndroidVie
         val label = backup.meta.label
         return c.jobs.start(
             getApplication(),
-            JobRequest("Restore of $label", JobKind.RESTORE, listOf(JobTask.RestoreApp(packageName, label, backup.dir.path, parts))),
+            JobRequest("Restore of $label", JobKind.RESTORE, listOf(JobTask.RestoreApp(packageName, label, backup.dir.id, parts))),
         )
     }
 

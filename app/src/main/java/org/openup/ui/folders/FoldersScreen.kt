@@ -153,7 +153,7 @@ fun FoldersScreen(onBack: () -> Unit, onJobStarted: () -> Unit, vm: FoldersViewM
             if (backups.isEmpty()) {
                 item { Text("No backups yet", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp)) }
             }
-            items(backups, key = { "b:" + it.dir.path }) { b ->
+            items(backups, key = { "b:" + it.dir.id }) { b ->
                 ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {

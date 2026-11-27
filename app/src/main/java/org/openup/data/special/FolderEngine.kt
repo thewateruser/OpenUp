@@ -10,6 +10,7 @@ import org.openup.data.CryptoSession
 import org.openup.data.ProgressSink
 import org.openup.data.SettingsRepository
 import org.openup.data.TaskOutcome
+import org.openup.data.location.LocalNode
 import org.openup.data.model.FolderBackup
 import org.openup.data.model.SpecialBackupMeta
 import org.openup.data.model.StoredFile
@@ -40,20 +41,20 @@ class FolderEngine(
 
     suspend fun backup(path: String, crypto: CryptoSession?, progress: ProgressSink): TaskOutcome {
         validate(path)?.let { throw IOException(it) }
-        val backupRoot = storage.root.path.trimEnd('/')
-        val excludes = if (backupRoot.startsWith("$path/")) listOf(backupRoot.removePrefix("$path/")) else emptyList()
+        val backupRoot = localBackupRoot()
+        val excludes = if (backupRoot != null && backupRoot.startsWith("$path/")) listOf(backupRoot.removePrefix("$path/")) else emptyList()
         storage.ensureRoot()
         val (id, partial) = storage.newPartial(storage.folderDir(path))
         try {
             val s = settings.current
-            val target = File(partial, Codec.fileName("folder.tar", s.compression, crypto != null))
+            val target = Codec.fileName("folder.tar", s.compression, crypto != null)
             val (stored, stats) = if (useShell(path)) {
                 val size = shell.sizeOf(path)
                 if (size < 0) throw IOException("Folder not found: $path")
                 val excluded = excludes.sumOf { shell.sizeOf("$path/$it").coerceAtLeast(0) }
                 progress.step("Backing up $path", (size - excluded).coerceAtLeast(0))
                 shell.tar(path, excludes) { input ->
-                    BackupIO.write(target, s.compression, s.compressionLevel, crypto?.spec) { out ->
+                    BackupIO.write(partial, target, s.compression, s.compressionLevel, crypto?.spec) { out ->
                         BackupIO.progressCopy(input, out, progress.asByteProgress())
                     }
                 }
@@ -63,7 +64,7 @@ class FolderEngine(
                 val excluded = excludes.sumOf { FileOps.sizeOf(File(dir, it)).coerceAtLeast(0) }
                 progress.step("Backing up $path", (FileOps.sizeOf(dir) - excluded).coerceAtLeast(0))
                 var tarStats: FileOps.TarStats? = null
-                val stored: StoredFile = BackupIO.write(target, s.compression, s.compressionLevel, crypto?.spec) { out ->
+                val stored: StoredFile = BackupIO.write(partial, target, s.compression, s.compressionLevel, crypto?.spec) { out ->
                     tarStats = FileOps.tar(dir, CountingOutputStream(out, progress.asByteProgress()), excludes.toSet())
                 }
                 val t = tarStats!!
@@ -92,7 +93,10 @@ class FolderEngine(
             }
             return TaskOutcome("Backed up ${meta.summary}", warnings)
         } catch (t: Throwable) {
-            partial.deleteRecursively()
+            try {
+                partial.deleteRecursively()
+            } catch (_: Exception) {
+            }
             throw t
         }
     }
@@ -121,14 +125,17 @@ class FolderEngine(
 
     /** Returns an error message if [path] cannot be backed up as a folder, or null if it is fine. */
     fun validate(path: String): String? {
-        val backupRoot = storage.root.path.trimEnd('/')
+        val backupRoot = localBackupRoot()
         return when {
             !path.startsWith("/storage/") -> "Only folders on internal storage or SD cards (/storage/…) can be backed up"
             path.split('/').any { it == ".." || it == "." } -> "Invalid path"
-            path == backupRoot || path.startsWith("$backupRoot/") -> "This is OpenUp's own backup folder"
+            backupRoot != null && (path == backupRoot || path.startsWith("$backupRoot/")) -> "This is OpenUp's own backup folder"
             else -> null
         }
     }
+
+    /** Path of the backup folder when it is on the phone (null for an external drive). */
+    private fun localBackupRoot(): String? = (storage.root as? LocalNode)?.file?.path?.trimEnd('/')
 
     companion object {
         private val SHELL_ONLY = Regex("^/storage/emulated/\\d+/Android/(data|obb)(/|$)")

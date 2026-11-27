@@ -20,7 +20,6 @@ import org.openup.data.ProgressSink
 import org.openup.data.TaskOutcome
 import org.openup.data.model.SpecialType
 import org.openup.shizuku.ShizukuStatus
-import java.io.File
 import java.io.IOException
 import kotlin.coroutines.CoroutineContext
 
@@ -160,6 +159,15 @@ class JobManager(private val c: AppContainer) {
     }
 
     private suspend fun ensureStorage(): String? {
+        if (c.locations.isExternal) {
+            // Backups go to an external drive: no storage permission needed for the location itself.
+            return c.locations.externalProblem() ?: try {
+                c.storage.ensureRoot()
+                null
+            } catch (e: IOException) {
+                e.message ?: "The backup drive cannot be used"
+            }
+        }
         if (c.privileges.hasStorageAccess()) return null
         if (c.shizuku.status.value is ShizukuStatus.Ready) {
             runCatching { c.privileges.grantStorageAccess() }
@@ -174,7 +182,7 @@ class JobManager(private val c: AppContainer) {
             is JobTask.BackupApp -> c.appBackup.backup(task.packageName, task.parts, crypto, sink)
             is JobTask.RestoreApp -> {
                 val backup = if (task.backupDir != null) {
-                    c.storage.readAppBackup(File(task.backupDir))
+                    c.storage.readAppBackup(c.storage.node(task.backupDir))
                         ?: throw IOException("The selected backup no longer exists or is unreadable")
                 } else {
                     c.storage.appBackups(task.packageName).firstOrNull() ?: throw IOException("No backup found")
@@ -194,13 +202,13 @@ class JobManager(private val c: AppContainer) {
             }
             is JobTask.BackupFolder -> c.folders.backup(task.path, crypto, sink)
             is JobTask.RestoreFolder -> {
-                val backup = c.storage.readFolderBackup(File(task.backupDir))
+                val backup = c.storage.readFolderBackup(c.storage.node(task.backupDir))
                     ?: throw IOException("The selected backup no longer exists or is unreadable")
                 c.folders.restore(backup, crypto, sink)
             }
             is JobTask.RestoreSpecial -> {
                 ensureSpecialPermissions(task.type, restore = true)
-                val backup = c.storage.readSpecialBackup(task.type, File(task.backupDir))
+                val backup = c.storage.readSpecialBackup(task.type, c.storage.node(task.backupDir))
                     ?: throw IOException("Backup not found or unreadable")
                 withContext(Dispatchers.IO) {
                     when (task.type) {

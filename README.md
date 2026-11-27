@@ -51,8 +51,11 @@ Get the latest signed APK from the [Releases page](../../releases). Check it aga
    running, OpenUp grants these itself.
 4. Back up apps from **Apps**, or use the other categories on the home screen.
 
-Backups are stored in `/storage/emulated/0/OpenUp` by default (changeable in Settings). To keep backups
-safe from losing the phone, copy or sync that folder somewhere else (computer, Syncthing, Nextcloud, …).
+Backups are stored in `/storage/emulated/0/OpenUp` by default. To keep them off the phone, open
+**Settings → Backup location → Back up to a USB drive** and pick the drive in the system folder picker
+(USB drives are only reachable through that picker on Android). Backups then go into an `OpenUp` folder
+on the drive. Files larger than 2 GB are split into parts, so FAT32 formatted drives work too. If the drive
+is not plugged in, backups stop with a clear message and scheduled backups skip that run.
 
 ## How it works
 
@@ -83,6 +86,8 @@ OpenUp/
   wallpapers/<id>/ meta.json, home.img[.enc], lock.img[.enc]
   wifi/<id>/      meta.json, wifi.json[.zst][.enc]
   folders/<name>_<hash>/<id>/ meta.json (original path), folder.tar[.zst][.enc]
+
+Files over 2 GB are split: <file>, <file>.part2, <file>.part3, … (concatenate them to get the original).
 ```
 
 Unencrypted archives are standard POSIX tar files (compressed with standard zstd), so they can be

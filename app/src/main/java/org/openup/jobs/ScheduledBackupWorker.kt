@@ -38,6 +38,10 @@ class ScheduledBackupWorker(context: Context, params: WorkerParameters) : Corout
 
     private suspend fun runScheduled(c: org.openup.AppContainer, s: org.openup.data.ScheduleSettings): Result {
 
+        c.locations.externalProblem()?.let { problem ->
+            Notifications.showMessage(applicationContext, "Scheduled backup skipped", problem)
+            return Result.success()
+        }
         c.shizuku.refresh()
         val shizukuReady = c.shizuku.status.value is ShizukuStatus.Ready
         val notes = ArrayList<String>()

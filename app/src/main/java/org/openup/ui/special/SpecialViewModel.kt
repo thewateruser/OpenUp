@@ -50,7 +50,7 @@ class SpecialViewModel(app: Application, val type: SpecialType) : AndroidViewMod
         _permission.value = computePermission()
         viewModelScope.launch {
             _backups.value = withContext(Dispatchers.IO) {
-                if (c.privileges.hasStorageAccess()) c.storage.specialBackups(type) else emptyList()
+                if (c.backupsReadable()) c.storage.specialBackups(type) else emptyList()
             }
         }
     }
@@ -123,7 +123,7 @@ class SpecialViewModel(app: Application, val type: SpecialType) : AndroidViewMod
     fun backup(): Boolean = c.jobs.start(getApplication(), JobRequest("${type.title} backup", JobKind.BACKUP, listOf(JobTask.BackupSpecial(type))))
 
     fun restore(b: SpecialBackup): Boolean =
-        c.jobs.start(getApplication(), JobRequest("${type.title} restore", JobKind.RESTORE, listOf(JobTask.RestoreSpecial(type, b.dir.path))))
+        c.jobs.start(getApplication(), JobRequest("${type.title} restore", JobKind.RESTORE, listOf(JobTask.RestoreSpecial(type, b.dir.id))))
 
     fun delete(b: SpecialBackup) {
         viewModelScope.launch {

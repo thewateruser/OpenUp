@@ -1,13 +1,16 @@
 package org.openup.data
 
 import kotlinx.serialization.json.Json
+import org.openup.data.location.LocalNode
+import org.openup.data.location.StorageNode
+import org.openup.data.location.readText
+import org.openup.data.location.writeText
 import org.openup.data.model.AppBackup
 import org.openup.data.model.AppBackupMeta
 import org.openup.data.model.FolderBackup
 import org.openup.data.model.SpecialBackup
 import org.openup.data.model.SpecialBackupMeta
 import org.openup.data.model.SpecialType
-import org.openup.core.io.SyncingFileOutputStream
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -20,96 +23,85 @@ import java.util.TimeZone
  * ```
  * <root>/apps/<package>/<id>/meta.json, icon.png, apk/..., extdata.tar.zst[.enc], obb..., media...
  * <root>/<messages|calllogs|wallpapers|wifi>/<id>/meta.json, ...
+ * <root>/folders/<name>_<hash>/<id>/meta.json, folder.tar...
  * ```
  * `<id>` is the UTC time of the backup (yyyyMMdd-HHmmss). Backups are written to `<id>.partial`
  * and renamed when complete, so an interrupted backup is never mistaken for a valid one.
+ * The root is a folder on the phone or on an external drive (see [org.openup.data.location]).
  */
-class BackupStorage(private val rootPath: () -> String) {
-    constructor(settings: SettingsRepository) : this({ settings.current.backupDir })
+class BackupStorage(
+    private val rootProvider: () -> StorageNode,
+    private val nodeResolver: (String) -> StorageNode = { LocalNode(File(it)) },
+) {
+    val root: StorageNode get() = rootProvider()
+    val appsDir: StorageNode get() = root.child("apps")
+    val foldersDir: StorageNode get() = root.child("folders")
 
-    val root: File get() = File(rootPath())
-    val appsDir: File get() = File(root, "apps")
-
-    fun specialDir(type: SpecialType) = File(root, type.dirName)
-
-    val foldersDir: File get() = File(root, "folders")
+    fun specialDir(type: SpecialType) = root.child(type.dirName)
 
     /** Backups of the folder at [path] live in their own sub-folder, so they are pruned separately. */
-    fun folderDir(path: String) = File(foldersDir, folderKey(path))
+    fun folderDir(path: String) = foldersDir.child(folderKey(path))
 
-    fun readFolderBackup(dir: File): FolderBackup? = try {
-        val meta = json.decodeFromString(SpecialBackupMeta.serializer(), File(dir, META).readText())
-        if (meta.type == FolderBackup.TYPE && meta.extras[FolderBackup.FOLDER_PATH_KEY] != null) FolderBackup(dir.name, dir, meta) else null
-    } catch (_: Exception) {
-        null
-    }
-
-    /** Every folder backup, newest first. */
-    fun folderBackups(): List<FolderBackup> =
-        (foldersDir.listFiles()?.filter { it.isDirectory } ?: emptyList())
-            .flatMap { versionDirs(it).mapNotNull { v -> readFolderBackup(v) } }
-            .sortedByDescending { it.meta.backupTime }
-
-    fun appDir(packageName: String): File {
+    fun appDir(packageName: String): StorageNode {
         require(isSafeName(packageName)) { "invalid package name" }
-        return File(appsDir, packageName)
+        return appsDir.child(packageName)
     }
 
-    /** Creates the root folder (with a .nomedia marker) and checks that it is writable. */
-    fun ensureRoot(): File {
+    /** Node for an id from [StorageNode.id] (e.g. a backup folder stored in a job). */
+    fun node(id: String): StorageNode = nodeResolver(id)
+
+    /** Creates the root folder (with a .nomedia marker) and checks that it is usable. */
+    fun ensureRoot(): StorageNode {
         val r = root
-        if (!r.isDirectory && !r.mkdirs()) {
-            throw IOException("Cannot create backup folder $r. Grant OpenUp storage access in the setup screen.")
-        }
-        val nomedia = File(r, ".nomedia")
-        if (!nomedia.exists()) {
-            try {
-                nomedia.createNewFile()
-            } catch (e: IOException) {
-                throw IOException("Backup folder $r is not writable: ${e.message}", e)
+        try {
+            r.mkdirs()
+        } catch (e: IOException) {
+            if (r is LocalNode) {
+                throw IOException("Cannot create backup folder ${r.file}. Grant OpenUp storage access in the setup screen.", e)
             }
+            throw e
         }
-        if (!r.canWrite()) throw IOException("Backup folder $r is not writable")
+        if (r is LocalNode && !r.file.canWrite()) throw IOException("Backup folder ${r.file} is not writable")
+        val nomedia = r.child(".nomedia")
+        try {
+            if (!nomedia.exists()) nomedia.openOutput().close()
+        } catch (_: IOException) {
+            // Only keeps gallery apps from scanning backups; not essential.
+        }
         return r
     }
 
     /** Creates a fresh `<id>.partial` directory under [parent] and returns (id, dir). */
-    fun newPartial(parent: File): Pair<String, File> {
-        if (!parent.isDirectory && !parent.mkdirs()) throw IOException("Cannot create $parent")
+    fun newPartial(parent: StorageNode): Pair<String, StorageNode> {
+        parent.mkdirs()
+        val existing = parent.list()
         // Leftovers from interrupted runs are useless; remove them.
-        parent.listFiles()?.filter { it.isDirectory && it.name.endsWith(PARTIAL) }?.forEach { it.deleteRecursively() }
-        var id = idFormat().format(Date())
+        existing.filter { it.name.endsWith(PARTIAL) && it.isDirectory() }.forEach { it.deleteRecursively() }
+        val names = existing.map { it.name }.toSet()
+        val base = idFormat().format(Date())
+        var id = base
         var n = 1
-        while (File(parent, id).exists() || File(parent, id + PARTIAL).exists()) {
-            id = idFormat().format(Date()) + "-" + n++
-        }
-        val dir = File(parent, id + PARTIAL)
-        if (!dir.mkdirs()) throw IOException("Cannot create $dir")
+        while (id in names || id + PARTIAL in names) id = base + "-" + n++
+        val dir = parent.child(id + PARTIAL)
+        dir.mkdirs()
         return id to dir
     }
 
-    fun commitPartial(partial: File, id: String): File {
-        val target = File(partial.parentFile, id)
-        if (!partial.renameTo(target)) throw IOException("Could not finalize backup folder $target")
-        return target
-    }
+    fun commitPartial(partial: StorageNode, id: String): StorageNode = partial.renameTo(id)
 
-    fun writeJson(file: File, text: String) {
-        SyncingFileOutputStream(file).use { it.write(text.toByteArray(Charsets.UTF_8)) }
-    }
+    fun writeAppMeta(dir: StorageNode, meta: AppBackupMeta) =
+        dir.child(META).writeText(json.encodeToString(AppBackupMeta.serializer(), meta))
 
-    fun writeAppMeta(dir: File, meta: AppBackupMeta) = writeJson(File(dir, META), json.encodeToString(AppBackupMeta.serializer(), meta))
+    fun writeSpecialMeta(dir: StorageNode, meta: SpecialBackupMeta) =
+        dir.child(META).writeText(json.encodeToString(SpecialBackupMeta.serializer(), meta))
 
-    fun writeSpecialMeta(dir: File, meta: SpecialBackupMeta) =
-        writeJson(File(dir, META), json.encodeToString(SpecialBackupMeta.serializer(), meta))
+    /** Candidate version folders, newest first. Folders without valid metadata are skipped by the readers. */
+    private fun versionDirs(parent: StorageNode): List<StorageNode> =
+        parent.list().filter { !it.name.endsWith(PARTIAL) && isSafeName(it.name) && it.isDirectory() }
+            .sortedByDescending { it.name }
 
-    private fun versionDirs(parent: File): List<File> =
-        parent.listFiles()?.filter { it.isDirectory && !it.name.endsWith(PARTIAL) && File(it, META).isFile }
-            ?.sortedByDescending { it.name } ?: emptyList()
-
-    fun readAppBackup(dir: File): AppBackup? = try {
-        val meta = json.decodeFromString(AppBackupMeta.serializer(), File(dir, META).readText())
-        AppBackup(dir.name, dir, meta)
+    fun readAppBackup(dir: StorageNode): AppBackup? = try {
+        AppBackup(dir.name, dir, json.decodeFromString(AppBackupMeta.serializer(), dir.child(META).readText()))
     } catch (_: Exception) {
         null
     }
@@ -121,14 +113,14 @@ class BackupStorage(private val rootPath: () -> String) {
     /** Newest backup of every package that has one. */
     fun latestAppBackups(): Map<String, AppBackup> {
         val result = HashMap<String, AppBackup>()
-        appsDir.listFiles()?.filter { it.isDirectory && isSafeName(it.name) }?.forEach { pkgDir ->
+        appsDir.list().filter { isSafeName(it.name) && it.isDirectory() }.forEach { pkgDir ->
             versionDirs(pkgDir).firstNotNullOfOrNull { readAppBackup(it) }?.let { result[pkgDir.name] = it }
         }
         return result
     }
 
-    fun readSpecialBackup(type: SpecialType, dir: File): SpecialBackup? = try {
-        SpecialBackup(type, dir.name, dir, json.decodeFromString(SpecialBackupMeta.serializer(), File(dir, META).readText()))
+    fun readSpecialBackup(type: SpecialType, dir: StorageNode): SpecialBackup? = try {
+        SpecialBackup(type, dir.name, dir, json.decodeFromString(SpecialBackupMeta.serializer(), dir.child(META).readText()))
     } catch (_: Exception) {
         null
     }
@@ -136,17 +128,41 @@ class BackupStorage(private val rootPath: () -> String) {
     fun specialBackups(type: SpecialType): List<SpecialBackup> =
         versionDirs(specialDir(type)).mapNotNull { readSpecialBackup(type, it) }
 
-    /** Deletes the oldest versions in [parent] so that at most [keep] remain. */
-    fun prune(parent: File, keep: Int) {
-        versionDirs(parent).drop(keep.coerceAtLeast(1)).forEach { it.deleteRecursively() }
+    fun readFolderBackup(dir: StorageNode): FolderBackup? = try {
+        val meta = json.decodeFromString(SpecialBackupMeta.serializer(), dir.child(META).readText())
+        if (meta.type == FolderBackup.TYPE && meta.extras[FolderBackup.FOLDER_PATH_KEY] != null) FolderBackup(dir.name, dir, meta) else null
+    } catch (_: Exception) {
+        null
     }
 
-    fun delete(dir: File): Boolean {
+    /** Every folder backup, newest first. */
+    fun folderBackups(): List<FolderBackup> =
+        foldersDir.list().filter { it.isDirectory() }
+            .flatMap { versionDirs(it).mapNotNull { v -> readFolderBackup(v) } }
+            .sortedByDescending { it.meta.backupTime }
+
+    /** Deletes the oldest valid versions in [parent] so that at most [keep] remain. */
+    fun prune(parent: StorageNode, keep: Int) {
+        versionDirs(parent).filter { v -> isValidVersion(v) }.drop(keep.coerceAtLeast(1)).forEach { it.deleteRecursively() }
+    }
+
+    private fun isValidVersion(dir: StorageNode): Boolean = try {
+        json.parseToJsonElement(dir.child(META).readText())
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    fun delete(dir: StorageNode): Boolean {
         val ok = dir.deleteRecursively()
-        // Remove the package folder once its last version is gone.
-        dir.parentFile?.let { parent ->
-            val grand = parent.parentFile
-            if ((grand == appsDir || grand == foldersDir) && parent.listFiles()?.isEmpty() == true) parent.delete()
+        // Remove the package / folder container once its last version is gone.
+        val container = dir.parent
+        val group = container?.parent
+        if (container != null && group != null && (group.name == "apps" || group.name == "folders")) {
+            try {
+                if (container.list().isEmpty()) container.deleteRecursively()
+            } catch (_: IOException) {
+            }
         }
         return ok
     }

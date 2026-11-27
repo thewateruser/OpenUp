@@ -18,6 +18,7 @@ import org.openup.data.model.AppBackupMeta
 import org.openup.data.model.DataPart
 import org.openup.shizuku.ShellClient
 import java.io.File
+import org.openup.data.location.StorageNode
 import java.io.FileInputStream
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -67,7 +68,7 @@ class AppBackupEngine(
             } else {
                 null
             }
-            saveIcon(packageName, File(partial, BackupStorage.ICON))
+            saveIcon(packageName, partial.child(BackupStorage.ICON))
             val meta = AppBackupMeta(
                 packageName = packageName,
                 label = app.label,
@@ -99,14 +100,17 @@ class AppBackupEngine(
             }.joinToString(", ")
             return TaskOutcome("Backed up $what", warnings)
         } catch (t: Throwable) {
-            partial.deleteRecursively()
+            try {
+                partial.deleteRecursively()
+            } catch (_: Exception) {
+            }
             throw t
         }
     }
 
-    private fun backupApks(app: InstalledApp, dir: File, crypto: CryptoSession?, progress: ProgressSink): List<ApkFile> {
-        val apkDir = File(dir, "apk")
-        if (!apkDir.mkdirs()) throw IOException("Cannot create $apkDir")
+    private fun backupApks(app: InstalledApp, dir: StorageNode, crypto: CryptoSession?, progress: ProgressSink): List<ApkFile> {
+        val apkDir = dir.child("apk")
+        apkDir.mkdirs()
         progress.step("Backing up APK", app.apkSize)
         val used = HashSet<String>()
         return app.apkPaths.map { (split, path) ->
@@ -114,11 +118,11 @@ class AppBackupEngine(
             if (!src.canRead()) throw IOException("Cannot read ${src.name} of ${app.packageName}")
             var base = if (split == "base") "base" else "split_" + split.replace(Regex("[^A-Za-z0-9._-]"), "_")
             while (!used.add(base)) base += "_"
-            val target = File(apkDir, Codec.fileName("$base.apk", Compression.NONE, crypto != null))
-            val stored = BackupIO.write(target, Compression.NONE, 0, crypto?.spec) { out ->
+            val target = Codec.fileName("$base.apk", Compression.NONE, crypto != null)
+            val stored = BackupIO.write(apkDir, target, Compression.NONE, 0, crypto?.spec) { out ->
                 FileInputStream(src).use { BackupIO.progressCopy(it, out, progress.asByteProgress()) }
             }
-            ApkFile(split, stored.copy(file = "apk/" + target.name))
+            ApkFile(split, stored.copy(file = "apk/$target"))
         }
     }
 
@@ -126,7 +130,7 @@ class AppBackupEngine(
         path: String,
         base: String,
         excludes: List<String>,
-        dir: File,
+        dir: StorageNode,
         crypto: CryptoSession?,
         progress: ProgressSink,
         warnings: MutableList<String>,
@@ -137,9 +141,9 @@ class AppBackupEngine(
         val excluded = excludes.sumOf { shell.sizeOf("$path/$it").coerceAtLeast(0) }
         progress.step("Backing up $what", (size - excluded).coerceAtLeast(0))
         val s = settings.current
-        val target = File(dir, Codec.fileName("$base.tar", s.compression, crypto != null))
+        val target = Codec.fileName("$base.tar", s.compression, crypto != null)
         val (stored, stats) = shell.tar(path, excludes) { input ->
-            BackupIO.write(target, s.compression, s.compressionLevel, crypto?.spec) { out ->
+            BackupIO.write(dir, target, s.compression, s.compressionLevel, crypto?.spec) { out ->
                 BackupIO.progressCopy(input, out, progress.asByteProgress())
             }
         }
@@ -151,13 +155,16 @@ class AppBackupEngine(
         return DataPart(stored, stats.files, stats.dirs, stats.skipped)
     }
 
-    private fun saveIcon(packageName: String, file: File) {
+    private fun saveIcon(packageName: String, node: StorageNode) {
         try {
             val drawable = context.packageManager.getApplicationIcon(packageName)
             val bitmap = drawable.toBitmap(ICON_SIZE, ICON_SIZE, Bitmap.Config.ARGB_8888)
-            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            node.openOutput().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         } catch (_: Exception) {
-            file.delete()
+            try {
+                node.deleteRecursively()
+            } catch (_: Exception) {
+            }
         }
     }
 

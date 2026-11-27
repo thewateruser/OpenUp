@@ -36,6 +36,9 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     val setup = _setup.asStateFlow()
     private val _counts = MutableStateFlow(HomeCounts())
     val counts = _counts.asStateFlow()
+    private val _locationProblem = MutableStateFlow<String?>(null)
+    val locationProblem = _locationProblem.asStateFlow()
+    val externalLocation get() = c.locations.isExternal
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
 
@@ -53,9 +56,10 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             battery = pm?.isIgnoringBatteryOptimizations(ctx.packageName) ?: true,
         )
         viewModelScope.launch {
+            _locationProblem.value = withContext(Dispatchers.IO) { c.locations.externalProblem() }
             _counts.value = withContext(Dispatchers.IO) {
                 val folders = c.settings.current.folders.size
-                if (!c.privileges.hasStorageAccess()) return@withContext HomeCounts(folders = folders)
+                if (!c.backupsReadable()) return@withContext HomeCounts(folders = folders)
                 val latest = c.storage.latestAppBackups()
                 val specials = SpecialType.entries.associateWith { c.storage.specialBackups(it).size }
                 HomeCounts(latest.size, specials, latest.values.maxOfOrNull { it.meta.backupTime } ?: 0, folders)

@@ -2,6 +2,12 @@ package org.openup.ui.settings
 
 import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -56,6 +62,20 @@ fun SettingsScreen(onBack: () -> Unit) {
     val s by c.settings.state.collectAsStateWithLifecycle()
     val hasPassword by c.passwords.hasPassword.collectAsStateWithLifecycle()
     var folderDialog by remember { mutableStateOf(false) }
+    var locationVersion by remember { mutableIntStateOf(0) }
+    val location by produceState("…", s.backupDir, locationVersion) {
+        value = withContext(Dispatchers.IO) { c.locations.describe() }
+    }
+    val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            try {
+                c.locations.useExternal(uri)
+                locationVersion++
+            } catch (e: SecurityException) {
+                Toast.makeText(context, "This location cannot be used for backups", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     var passwordDialog by remember { mutableStateOf(false) }
     var removePassword by remember { mutableStateOf(false) }
 
@@ -68,8 +88,24 @@ fun SettingsScreen(onBack: () -> Unit) {
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
-            SectionTitle("Storage")
-            ClickRow("Backup folder", s.backupDir) { folderDialog = true }
+            SectionTitle("Backup location")
+            Text(
+                location,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+            ClickRow(
+                "Back up to a USB drive",
+                "Pick the drive (or a folder on it) in the next screen. Backups go into an OpenUp folder on the drive.",
+            ) { treePicker.launch(null) }
+            ClickRow("Back up to this phone", "Choose a folder on internal storage") { folderDialog = true }
+            Text(
+                "Existing backups are not moved when you change the location.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
             IntSliderRow("Backups to keep per app", s.keepVersions, 1..SettingsRepository.MAX_VERSIONS, { "$it" }) { v ->
                 c.settings.update { it.copy(keepVersions = v) }
             }
@@ -151,8 +187,8 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     if (folderDialog) {
         FolderDialog(
-            current = s.backupDir,
-            onSave = { path -> c.settings.update { it.copy(backupDir = path) } },
+            current = if (c.locations.isExternal) SettingsRepository.defaultBackupDir() else s.backupDir,
+            onSave = { path -> c.locations.useLocal(path) },
             onDismiss = { folderDialog = false },
         )
     }

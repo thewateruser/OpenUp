@@ -2,6 +2,7 @@ package org.openup.data.model
 
 import kotlinx.serialization.Serializable
 import org.openup.core.io.Compression
+import org.openup.data.location.StorageNode
 
 const val FORMAT_VERSION = 1
 
@@ -18,6 +19,11 @@ data class StoredFile(
     val encrypted: Boolean,
     /** SHA-256 of the decoded data, if it was computed. */
     val sha256: String? = null,
+    /**
+     * Number of pieces the file is split into (to stay below the 4 GB limit of FAT32 drives).
+     * Piece 1 is [file], piece n (n >= 2) is "<file>.part<n>".
+     */
+    val parts: Int = 1,
 )
 
 @Serializable
@@ -110,10 +116,10 @@ data class SpecialBackupMeta(
 }
 
 /** An app backup version found on disk. */
-data class AppBackup(val id: String, val dir: java.io.File, val meta: AppBackupMeta)
+data class AppBackup(val id: String, val dir: StorageNode, val meta: AppBackupMeta)
 
 /** A backup of a user chosen folder. The original location is stored in the metadata. */
-data class FolderBackup(val id: String, val dir: java.io.File, val meta: SpecialBackupMeta) {
+data class FolderBackup(val id: String, val dir: StorageNode, val meta: SpecialBackupMeta) {
     val path: String? get() = meta.extras[FOLDER_PATH_KEY]
 
     companion object {
@@ -123,4 +129,4 @@ data class FolderBackup(val id: String, val dir: java.io.File, val meta: Special
 }
 
 /** A special (non app) backup found on disk. */
-data class SpecialBackup(val type: SpecialType, val id: String, val dir: java.io.File, val meta: SpecialBackupMeta)
+data class SpecialBackup(val type: SpecialType, val id: String, val dir: StorageNode, val meta: SpecialBackupMeta)

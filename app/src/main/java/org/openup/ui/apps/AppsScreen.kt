@@ -65,7 +65,6 @@ import org.openup.ui.components.EmptyState
 import org.openup.ui.components.PartsDialog
 import org.openup.ui.components.formatBytes
 import org.openup.ui.components.formatRelative
-import java.io.File
 
 @Composable
 fun AppsScreen(
@@ -255,7 +254,7 @@ private fun AppRow(item: AppItem, checked: Boolean, onClick: () -> Unit, onToggl
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AppIcon(item.packageName, item.latest?.dir?.let { File(it, "icon.png") })
+        AppIcon(item.packageName, item.latest?.dir?.child("icon.png"))
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(item.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)

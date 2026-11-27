@@ -66,7 +66,8 @@ import org.openup.ui.components.SectionTitle
 import org.openup.ui.components.formatBytes
 import org.openup.ui.components.formatDateTime
 import org.openup.ui.components.formatRelative
-import java.io.File
+import org.openup.data.location.StorageNode
+import org.openup.data.location.resolve
 
 private fun description(type: SpecialType) = when (type) {
     SpecialType.MESSAGES -> "Backs up all SMS, MMS (including pictures and other attachments) and RCS chats – also " +
@@ -164,7 +165,7 @@ fun SpecialScreen(type: SpecialType, onBack: () -> Unit, onJobStarted: () -> Uni
                     Text("No backups yet", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
                 }
             }
-            items(backups, key = { it.dir.path }) { b ->
+            items(backups, key = { it.dir.id }) { b ->
                 SpecialBackupCard(
                     b,
                     restoreEnabled = !running && shizukuOk && permission.canRestore,
@@ -228,16 +229,18 @@ private fun SpecialBackupCard(b: SpecialBackup, restoreEnabled: Boolean, onResto
 }
 
 @Composable
-private fun WallpaperThumb(dir: File, file: StoredFile) {
-    val image by produceState<ImageBitmap?>(null, dir, file.file) {
+private fun WallpaperThumb(dir: StorageNode, file: StoredFile) {
+    val image by produceState<ImageBitmap?>(null, dir.id, file.file) {
         value = withContext(Dispatchers.IO) {
             runCatching {
-                val f = File(dir, file.file)
+                if (file.parts != 1) return@runCatching null
+                val node = dir.resolve(file.file)
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(f.path, bounds)
+                node.openInput().use { BitmapFactory.decodeStream(it, null, bounds) }
                 var sample = 1
                 while (bounds.outWidth / (sample * 2) >= 240 && bounds.outHeight / (sample * 2) >= 240) sample *= 2
-                BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+                node.openInput().use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) }
+                    ?.asImageBitmap()
             }.getOrNull()
         }
     }

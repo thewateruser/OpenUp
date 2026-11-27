@@ -11,7 +11,7 @@ import org.openup.data.SettingsRepository
 import org.openup.data.model.SpecialBackupMeta
 import org.openup.data.model.SpecialType
 import org.openup.data.model.StoredFile
-import java.io.File
+import org.openup.data.location.StorageNode
 import android.content.ContentValues
 import java.io.OutputStream
 
@@ -21,7 +21,7 @@ internal class SpecialSupport(private val settings: SettingsRepository, private 
     /** Runs [block] inside a new partial backup folder, then writes metadata and commits. */
     fun <T> create(
         type: SpecialType,
-        block: (dir: File) -> Triple<List<StoredFile>, Pair<Int, String>, T>,
+        block: (dir: StorageNode) -> Triple<List<StoredFile>, Pair<Int, String>, T>,
         extras: (T) -> Map<String, String> = { emptyMap() },
     ): T {
         storage.ensureRoot()
@@ -43,16 +43,19 @@ internal class SpecialSupport(private val settings: SettingsRepository, private 
             storage.prune(storage.specialDir(type), settings.current.keepVersions)
             return value
         } catch (t: Throwable) {
-            partial.deleteRecursively()
+            try {
+                partial.deleteRecursively()
+            } catch (_: Exception) {
+            }
             throw t
         }
     }
 
-    fun writeFile(dir: File, baseName: String, crypto: CryptoSession?, compress: Boolean, block: (OutputStream) -> Unit): StoredFile {
+    fun writeFile(dir: StorageNode, baseName: String, crypto: CryptoSession?, compress: Boolean, block: (OutputStream) -> Unit): StoredFile {
         val s = settings.current
         val compression = if (compress) s.compression else Compression.NONE
-        val file = File(dir, org.openup.core.io.Codec.fileName(baseName, compression, crypto != null))
-        return BackupIO.write(file, compression, s.compressionLevel, crypto?.spec, block)
+        val name = org.openup.core.io.Codec.fileName(baseName, compression, crypto != null)
+        return BackupIO.write(dir, name, compression, s.compressionLevel, crypto?.spec, block = block)
     }
 
     companion object {

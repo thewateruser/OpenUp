@@ -102,7 +102,7 @@ class AppsViewModel(app: Application) : AndroidViewModel(app) {
             _loading.value = true
             val list = withContext(Dispatchers.IO) {
                 val installed = c.installedApps.list().associateBy { it.packageName }
-                val backups = if (c.privileges.hasStorageAccess()) c.storage.latestAppBackups() else emptyMap()
+                val backups = if (c.backupsReadable()) c.storage.latestAppBackups() else emptyMap()
                 val pkgs = installed.keys + backups.keys
                 pkgs.map { pkg ->
                     val i = installed[pkg]
@@ -145,7 +145,7 @@ class AppsViewModel(app: Application) : AndroidViewModel(app) {
         val byPkg = _all.value.associateBy { it.packageName }
         val tasks = _selected.value.mapNotNull { byPkg[it] }.filter { it.latest != null }
             .sortedBy { it.label.lowercase() }
-            .map { JobTask.RestoreApp(it.packageName, it.label, it.latest!!.dir.path, parts) }
+            .map { JobTask.RestoreApp(it.packageName, it.label, it.latest!!.dir.id, parts) }
         if (tasks.isEmpty()) return false
         val ok = c.jobs.start(getApplication(), JobRequest("Restore of ${tasks.size} app${if (tasks.size == 1) "" else "s"}", JobKind.RESTORE, tasks))
         if (ok) clearSelection()

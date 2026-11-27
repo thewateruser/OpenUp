@@ -39,7 +39,7 @@ class FoldersViewModel(app: Application) : AndroidViewModel(app) {
     fun refresh() {
         viewModelScope.launch {
             _backups.value = withContext(Dispatchers.IO) {
-                if (c.privileges.hasStorageAccess()) c.storage.folderBackups() else emptyList()
+                if (c.backupsReadable()) c.storage.folderBackups() else emptyList()
             }
         }
     }
@@ -65,7 +65,7 @@ class FoldersViewModel(app: Application) : AndroidViewModel(app) {
 
     fun restore(b: FolderBackup): Boolean {
         val path = b.path ?: return false
-        return c.jobs.start(getApplication(), JobRequest("Restore of ${File(path).name}", JobKind.RESTORE, listOf(JobTask.RestoreFolder(path, b.dir.path))))
+        return c.jobs.start(getApplication(), JobRequest("Restore of ${File(path).name}", JobKind.RESTORE, listOf(JobTask.RestoreFolder(path, b.dir.id))))
     }
 
     fun delete(b: FolderBackup) {

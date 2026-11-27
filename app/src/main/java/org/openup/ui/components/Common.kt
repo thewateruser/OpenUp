@@ -47,7 +47,7 @@ import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.openup.data.AppParts
-import java.io.File
+import org.openup.data.location.StorageNode
 import java.text.DateFormat
 import java.util.Date
 
@@ -56,12 +56,16 @@ object IconCache {
 
     fun get(key: String): ImageBitmap? = cache.get(key)
 
-    fun load(context: Context, packageName: String, fallbackPng: File?): ImageBitmap? {
+    fun load(context: Context, packageName: String, fallbackPng: StorageNode?): ImageBitmap? {
         cache.get(packageName)?.let { return it }
         val bmp = try {
             context.packageManager.getApplicationIcon(packageName).toBitmap(144, 144).asImageBitmap()
         } catch (_: Exception) {
-            fallbackPng?.takeIf { it.isFile }?.let { f -> BitmapFactory.decodeFile(f.path)?.asImageBitmap() }
+            try {
+                fallbackPng?.openInput()?.use { BitmapFactory.decodeStream(it) }?.asImageBitmap()
+            } catch (_: Exception) {
+                null
+            }
         }
         if (bmp != null) cache.put(packageName, bmp)
         return bmp
@@ -73,10 +77,10 @@ object IconCache {
 }
 
 @Composable
-fun AppIcon(packageName: String, fallbackPng: File? = null, size: Dp = 40.dp) {
+fun AppIcon(packageName: String, fallbackPng: StorageNode? = null, size: Dp = 40.dp) {
     val context = LocalContext.current
     var bitmap by remember(packageName) { mutableStateOf(IconCache.get(packageName)) }
-    LaunchedEffect(packageName, fallbackPng) {
+    LaunchedEffect(packageName) {
         if (bitmap == null) bitmap = withContext(Dispatchers.IO) { IconCache.load(context, packageName, fallbackPng) }
     }
     val b = bitmap

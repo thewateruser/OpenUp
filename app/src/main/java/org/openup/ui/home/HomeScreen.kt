@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sms
+import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.Wallpaper
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.Button
@@ -85,6 +86,7 @@ fun HomeScreen(
     val counts by vm.counts.collectAsStateWithLifecycle()
     val job by vm.job.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+    val locationProblem by vm.locationProblem.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
 
     LifecycleResumeEffect(Unit) {
@@ -130,11 +132,26 @@ fun HomeScreen(
             item(span = { GridItemSpan(maxLineSpan) }) {
                 ShizukuCard(shizuku, onRequest = vm::requestShizukuPermission)
             }
+            locationProblem?.let { problem ->
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenSettings),
+                    ) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Usb, null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(problem, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
             val missing = !setup.storage || !setup.notifications || !setup.battery
             if (missing) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     SetupCard(
                         setup = setup,
+                        storageText = if (vm.externalLocation) "Needed for wallpaper and folder backups" else "Needed to save backups in the OpenUp folder",
                         onStorage = {
                             if (!vm.grantStorage()) {
                                 if (Build.VERSION.SDK_INT >= 30) {
@@ -275,11 +292,11 @@ private fun ShizukuCard(status: ShizukuStatus, onRequest: () -> Unit) {
 }
 
 @Composable
-private fun SetupCard(setup: SetupState, onStorage: () -> Unit, onNotifications: () -> Unit, onBattery: () -> Unit) {
+private fun SetupCard(setup: SetupState, storageText: String, onStorage: () -> Unit, onNotifications: () -> Unit, onBattery: () -> Unit) {
     ElevatedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Finish setup", style = MaterialTheme.typography.titleMedium)
-            if (!setup.storage) SetupRow(Icons.Outlined.Folder, "Storage access", "Needed to save backups in the OpenUp folder", "Allow", onStorage)
+            if (!setup.storage) SetupRow(Icons.Outlined.Folder, "Storage access", storageText, "Allow", onStorage)
             if (!setup.notifications) SetupRow(Icons.Outlined.Notifications, "Notifications", "Show progress and results of backups", "Allow", onNotifications)
             if (!setup.battery) SetupRow(Icons.Outlined.BatteryAlert, "Background activity", "Lets scheduled backups run reliably", "Allow", onBattery)
         }

@@ -6,6 +6,7 @@ import org.openup.data.PasswordStore
 import org.openup.data.Privileges
 import org.openup.data.SettingsRepository
 import org.openup.data.apps.AppBackupEngine
+import org.openup.data.location.BackupLocations
 import org.openup.data.apps.AppRestoreEngine
 import org.openup.data.apps.InstalledApps
 import org.openup.data.special.CallLogEngine
@@ -35,7 +36,8 @@ class OpenUpApp : Application() {
 class AppContainer(val app: Application) {
     val settings = SettingsRepository(app)
     val passwords = PasswordStore(app)
-    val storage = BackupStorage(settings)
+    val locations = BackupLocations(app, settings)
+    val storage = BackupStorage(locations::root, locations::node)
     val shizuku = ShizukuManager(app)
     val shell = ShellClient(shizuku, app.packageName)
     val installedApps = InstalledApps(app)
@@ -48,6 +50,10 @@ class AppContainer(val app: Application) {
     val wifi = WifiEngine(settings, storage, shell)
     val folders = FolderEngine(settings, storage, shell, shizuku)
     val jobs = JobManager(this)
+
+    /** True when existing backups can be listed (storage permission, or the external drive is connected). */
+    fun backupsReadable(): Boolean =
+        if (locations.isExternal) locations.externalProblem() == null else privileges.hasStorageAccess()
     val schedule = ScheduleManager(app, settings)
 }
 

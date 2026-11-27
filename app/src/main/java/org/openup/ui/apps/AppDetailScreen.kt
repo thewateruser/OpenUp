@@ -62,7 +62,6 @@ import org.openup.ui.components.SectionTitle
 import org.openup.ui.components.formatBytes
 import org.openup.ui.components.formatDateTime
 import org.openup.ui.components.formatRelative
-import java.io.File
 
 private sealed interface DetailDialog {
     data object Backup : DetailDialog
@@ -119,7 +118,7 @@ fun AppDetailScreen(packageName: String, onBack: () -> Unit, onJobStarted: () ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AppIcon(packageName, backups.firstOrNull()?.dir?.let { File(it, "icon.png") }, size = 56.dp)
+                    AppIcon(packageName, backups.firstOrNull()?.dir?.child("icon.png"), size = 56.dp)
                     Spacer(Modifier.width(16.dp))
                     Column {
                         Text(label, style = MaterialTheme.typography.titleLarge)
@@ -207,7 +206,7 @@ fun AppDetailScreen(packageName: String, onBack: () -> Unit, onJobStarted: () ->
                     )
                 }
             }
-            items(backups, key = { it.dir.path }) { b ->
+            items(backups, key = { it.dir.id }) { b ->
                 BackupCard(
                     b,
                     enabled = ready && !running,
