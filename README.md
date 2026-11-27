@@ -38,6 +38,10 @@ and restore much more than a normal app — **without root**.
 - Material 3 UI with dynamic colors and dark theme.
 - No internet permission. Nothing ever leaves your device unless you copy the backup folder yourself.
 
+## Download
+
+Get the latest signed APK from the [Releases page](../../releases). Check it against `SHA256SUMS.txt`.
+
 ## Getting started
 
 1. Install [Shizuku](https://shizuku.rikka.app/download/) and start it
