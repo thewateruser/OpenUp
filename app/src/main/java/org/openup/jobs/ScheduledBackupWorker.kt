@@ -16,7 +16,7 @@ class ScheduledBackupWorker(context: Context, params: WorkerParameters) : Corout
     override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(null)
 
     private fun foregroundInfo(state: JobState?): ForegroundInfo {
-        val n = Notifications.progress(applicationContext, state)
+        val n = Notifications.progress(applicationContext, state, idleTitle = "Scheduled backup running")
         return if (Build.VERSION.SDK_INT >= 29) {
             ForegroundInfo(Notifications.ID_PROGRESS + 10, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
@@ -48,7 +48,7 @@ class ScheduledBackupWorker(context: Context, params: WorkerParameters) : Corout
                 val latest = c.storage.latestAppBackups()
                 val parts = c.settings.current.parts
                 c.installedApps.list()
-                    .filter { s.includeSystemApps || !it.systemApp || it.updatedSystemApp }
+                    .filter { s.includeSystemApps || !it.systemApp }
                     .filter { app ->
                         if (!s.onlyChangedApps) return@filter true
                         val last = latest[app.packageName]?.meta ?: return@filter true

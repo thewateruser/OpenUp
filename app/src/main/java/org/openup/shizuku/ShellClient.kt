@@ -251,7 +251,12 @@ class ShellClient(private val shizuku: ShizukuManager, private val packageName: 
             }
         }
 
-    suspend fun sizeOf(path: String): Long = withContext(Dispatchers.IO) { call { it.sizeOf(path) } }
+    /** Size of [path] in bytes, or -1 if it does not exist. Throws if it cannot be read. */
+    suspend fun sizeOf(path: String): Long = withContext(Dispatchers.IO) {
+        val size = call { it.sizeOf(path) }
+        if (size == ShellService.SIZE_ERROR) throw ShellException("Cannot read $path")
+        size
+    }
 
     suspend fun delete(path: String): Boolean = withContext(Dispatchers.IO) { call { it.delete(path) } }
 

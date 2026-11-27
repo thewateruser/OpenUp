@@ -43,7 +43,7 @@ object Notifications {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
-    fun progress(context: Context, state: JobState?): android.app.Notification {
+    fun progress(context: Context, state: JobState?, idleTitle: String = "Preparing…"): android.app.Notification {
         val b = NotificationCompat.Builder(context, CHANNEL_PROGRESS)
             .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)
@@ -52,7 +52,7 @@ object Notifications {
             .setContentIntent(openApp(context))
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         if (state == null) {
-            b.setContentTitle("Preparing…").setProgress(0, 0, true)
+            b.setContentTitle(idleTitle).setProgress(0, 0, true)
         } else {
             val cur = state.current
             b.setContentTitle("${state.title} (${(state.finished + if (cur != null) 1 else 0).coerceAtMost(state.total)}/${state.total})")

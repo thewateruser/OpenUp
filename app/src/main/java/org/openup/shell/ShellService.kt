@@ -70,7 +70,7 @@ class ShellService : IShellService.Stub() {
     override fun sizeOf(path: String?): Long = try {
         FileOps.sizeOf(File(requireNotNull(path)))
     } catch (_: Throwable) {
-        -1
+        SIZE_ERROR
     }
 
     override fun delete(path: String?): Boolean = try {
@@ -105,6 +105,7 @@ class ShellService : IShellService.Stub() {
 
     companion object {
         const val KEY_ERROR = "error"
+        const val SIZE_ERROR = -2L
         const val KEY_EXIT_CODE = "exitCode"
         const val KEY_STDOUT = "stdout"
         const val KEY_STDERR = "stderr"

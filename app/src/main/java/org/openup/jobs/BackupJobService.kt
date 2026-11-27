@@ -96,8 +96,10 @@ class BackupJobService : Service() {
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
-        // Android 15+ limits dataSync services; stop cleanly instead of being killed.
+        // Android 15+ limits dataSync services and crashes apps that do not stop within seconds.
+        // Stop right away; onDestroy cancels the job coroutine.
         container.jobs.cancel()
+        stopSelfSafely()
     }
 
     override fun onDestroy() {

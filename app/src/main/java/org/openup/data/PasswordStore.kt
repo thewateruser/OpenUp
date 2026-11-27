@@ -76,10 +76,17 @@ class PasswordStore(context: Context) {
         runCatching { Base64.decode(it, Base64.NO_WRAP) }.getOrNull()?.takeIf { s -> s.size == PasswordKey.SALT_LEN }
     }
 
-    /** Key material for one job, or null when encryption is off. */
+    /**
+     * Key material for one job, or null when encryption is off. Throws if a password is configured
+     * but can no longer be read, so backups are never silently written unencrypted.
+     */
     fun session(): CryptoSession? {
-        val pw = getPassword() ?: return null
-        val salt = salt() ?: return null
+        if (!prefs.contains(KEY_PASSWORD)) return null
+        val pw = getPassword()
+        val salt = salt()
+        if (pw == null || salt == null) {
+            throw java.io.IOException("The backup password can no longer be read on this device. Set it again in Settings.")
+        }
         val key = PasswordKey(pw.toCharArray())
         return CryptoSession(key, EncryptionSpec(key, salt))
     }

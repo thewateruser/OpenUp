@@ -33,7 +33,7 @@ interface IShellService {
      */
     Bundle untar(String dirPath, in ParcelFileDescriptor input) = 4;
 
-    /** Total size in bytes of all regular files below path, or -1 if it does not exist. */
+    /** Total size in bytes of all regular files below path, -1 if it does not exist, -2 on error. */
     long sizeOf(String path) = 5;
 
     /** Recursively deletes path. Returns true if it no longer exists. */

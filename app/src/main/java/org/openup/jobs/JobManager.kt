@@ -100,9 +100,14 @@ class JobManager(private val c: AppContainer) {
     suspend fun run(request: JobRequest): JobState = mutex.withLock {
         val id = nextId++
         _state.value = JobState(id, request.title, request.kind, request.tasks.map { TaskState(it) }, running = true)
-        val crypto = c.passwords.session()
+        var crypto: CryptoSession? = null
         try {
-            val storageProblem = ensureStorage()
+            val storageProblem = try {
+                crypto = c.passwords.session()
+                ensureStorage()
+            } catch (e: IOException) {
+                e.message ?: "Encryption is not available"
+            }
             for ((index, task) in request.tasks.withIndex()) {
                 if (cancelRequested || !currentCoroutineContext().isActive) {
                     markRemainingCancelled()
@@ -168,9 +173,12 @@ class JobManager(private val c: AppContainer) {
         return when (task) {
             is JobTask.BackupApp -> c.appBackup.backup(task.packageName, task.parts, crypto, sink)
             is JobTask.RestoreApp -> {
-                val backup = task.backupDir?.let { c.storage.readAppBackup(File(it)) }
-                    ?: c.storage.appBackups(task.packageName).firstOrNull()
-                    ?: throw IOException("No backup found")
+                val backup = if (task.backupDir != null) {
+                    c.storage.readAppBackup(File(task.backupDir))
+                        ?: throw IOException("The selected backup no longer exists or is unreadable")
+                } else {
+                    c.storage.appBackups(task.packageName).firstOrNull() ?: throw IOException("No backup found")
+                }
                 c.appRestore.restore(backup, task.parts, crypto, sink)
             }
             is JobTask.BackupSpecial -> {

@@ -117,7 +117,8 @@ class AppBackupEngine(
     ): DataPart? {
         val size = shell.sizeOf(path)
         if (size < 0) return null
-        progress.step("Backing up $what", size)
+        val excluded = excludes.sumOf { shell.sizeOf("$path/$it").coerceAtLeast(0) }
+        progress.step("Backing up $what", (size - excluded).coerceAtLeast(0))
         val s = settings.current
         val target = File(dir, Codec.fileName("$base.tar", s.compression, crypto != null))
         val (stored, stats) = shell.tar(path, excludes) { input ->
