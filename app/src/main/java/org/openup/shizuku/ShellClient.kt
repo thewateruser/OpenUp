@@ -220,8 +220,11 @@ class ShellClient(private val shizuku: ShizukuManager, private val packageName: 
             }
         }
 
-    /** Replaces the contents of [dirPath] with the tar archive written by [producer]. */
-    suspend fun untar(dirPath: String, producer: (OutputStream) -> Unit): TransferStats =
+    /**
+     * Restores the tar archive written by [producer] into [dirPath]. The contents of [dirPath] are
+     * replaced, or with [merge] only overwritten where the archive has the same files.
+     */
+    suspend fun untar(dirPath: String, merge: Boolean = false, producer: (OutputStream) -> Unit): TransferStats =
         withContext(Dispatchers.IO) {
             val s = service()
             coroutineScope {
@@ -230,7 +233,7 @@ class ShellClient(private val shizuku: ShizukuManager, private val packageName: 
                 val writeSide = pipe[1]
                 val callResult = async(Dispatchers.IO) {
                     try {
-                        s.untar(dirPath, readSide)
+                        if (merge) s.untarMerge(dirPath, readSide) else s.untar(dirPath, readSide)
                     } catch (e: RemoteException) {
                         remoteFailure(e)
                     } finally {
@@ -256,6 +259,11 @@ class ShellClient(private val shizuku: ShizukuManager, private val packageName: 
         val size = call { it.sizeOf(path) }
         if (size == ShellService.SIZE_ERROR) throw ShellException("Cannot read $path")
         size
+    }
+
+    /** Sub-directory names of [path], or null if it cannot be read. */
+    suspend fun listDirectories(path: String): List<String>? = withContext(Dispatchers.IO) {
+        call { it.listDirectories(path) }?.toList()
     }
 
     suspend fun delete(path: String): Boolean = withContext(Dispatchers.IO) { call { it.delete(path) } }

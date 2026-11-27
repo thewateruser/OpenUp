@@ -44,4 +44,13 @@ interface IShellService {
 
     /** Result keys: "restored", "skipped" (int), "messages" (String[]), "error". */
     Bundle wifiRestore(String json) = 8;
+
+    /**
+     * Like untar, but keeps files in dirPath that are not in the archive (files with the same
+     * name are overwritten). Used for restoring folders on shared storage.
+     */
+    Bundle untarMerge(String dirPath, in ParcelFileDescriptor input) = 9;
+
+    /** Names of the sub-directories of path, or null if it cannot be read. */
+    String[] listDirectories(String path) = 10;
 }

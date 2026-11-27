@@ -53,10 +53,21 @@ class ShellService : IShellService.Stub() {
         }
     }
 
-    override fun untar(dirPath: String?, input: ParcelFileDescriptor?): Bundle = guard {
+    override fun untar(dirPath: String?, input: ParcelFileDescriptor?): Bundle = extract(dirPath, input, merge = false)
+
+    override fun untarMerge(dirPath: String?, input: ParcelFileDescriptor?): Bundle = extract(dirPath, input, merge = true)
+
+    override fun listDirectories(path: String?): Array<String>? = try {
+        val dir = File(requireNotNull(path))
+        if (dir.isDirectory) FileOps.listDirectories(dir).toTypedArray() else null
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun extract(dirPath: String?, input: ParcelFileDescriptor?, merge: Boolean): Bundle = guard {
         requireNotNull(input) { "input is null" }
         ParcelFileDescriptor.AutoCloseInputStream(input).use { stream ->
-            val stats = FileOps.untar(File(requireNotNull(dirPath)), stream)
+            val stats = FileOps.untar(File(requireNotNull(dirPath)), stream, merge)
             Bundle().apply {
                 putInt(KEY_FILES, stats.files)
                 putInt(KEY_DIRS, stats.dirs)

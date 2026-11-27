@@ -20,6 +20,7 @@ import org.openup.shizuku.ShellClient
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 
 /** Paths of the per-app folders on shared storage that the shell user can access. */
 object AppPaths {
@@ -36,6 +37,8 @@ class AppBackupEngine(
     private val apps: InstalledApps,
     private val shell: ShellClient,
 ) {
+    private val settingsOps = AppSettingsOps(shell)
+
     suspend fun backup(packageName: String, parts: AppParts, crypto: CryptoSession?, progress: ProgressSink): TaskOutcome {
         val app = apps.get(packageName) ?: throw IOException("App is not installed")
         val s = settings.current
@@ -50,6 +53,19 @@ class AppBackupEngine(
             val media = if (parts.media) backupTree(AppPaths.media(packageName), "media", emptyList(), partial, crypto, progress, warnings, "media") else null
             if (apks.isEmpty() && ext == null && obb == null && media == null) {
                 throw IOException("Nothing to back up: the selected parts do not exist for this app")
+            }
+            val appSettings = if (parts.permissions) {
+                progress.step("Reading app settings")
+                try {
+                    settingsOps.capture(packageName).takeIf { !it.isEmpty }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    warnings.add("App settings could not be read: ${e.message}")
+                    null
+                }
+            } else {
+                null
             }
             saveIcon(packageName, File(partial, BackupStorage.ICON))
             val meta = AppBackupMeta(
@@ -70,6 +86,7 @@ class AppBackupEngine(
                 obb = obb,
                 media = media,
                 permissions = if (parts.permissions) apps.grantedRuntimePermissions(packageName) else emptyList(),
+                settings = appSettings,
             )
             storage.writeAppMeta(partial, meta)
             storage.commitPartial(partial, id)

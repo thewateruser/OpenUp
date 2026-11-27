@@ -3,6 +3,7 @@ package org.openup.data
 import kotlinx.serialization.json.Json
 import org.openup.data.model.AppBackup
 import org.openup.data.model.AppBackupMeta
+import org.openup.data.model.FolderBackup
 import org.openup.data.model.SpecialBackup
 import org.openup.data.model.SpecialBackupMeta
 import org.openup.data.model.SpecialType
@@ -30,6 +31,24 @@ class BackupStorage(private val rootPath: () -> String) {
     val appsDir: File get() = File(root, "apps")
 
     fun specialDir(type: SpecialType) = File(root, type.dirName)
+
+    val foldersDir: File get() = File(root, "folders")
+
+    /** Backups of the folder at [path] live in their own sub-folder, so they are pruned separately. */
+    fun folderDir(path: String) = File(foldersDir, folderKey(path))
+
+    fun readFolderBackup(dir: File): FolderBackup? = try {
+        val meta = json.decodeFromString(SpecialBackupMeta.serializer(), File(dir, META).readText())
+        if (meta.type == FolderBackup.TYPE && meta.extras[FolderBackup.FOLDER_PATH_KEY] != null) FolderBackup(dir.name, dir, meta) else null
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Every folder backup, newest first. */
+    fun folderBackups(): List<FolderBackup> =
+        (foldersDir.listFiles()?.filter { it.isDirectory } ?: emptyList())
+            .flatMap { versionDirs(it).mapNotNull { v -> readFolderBackup(v) } }
+            .sortedByDescending { it.meta.backupTime }
 
     fun appDir(packageName: String): File {
         require(isSafeName(packageName)) { "invalid package name" }
@@ -126,7 +145,8 @@ class BackupStorage(private val rootPath: () -> String) {
         val ok = dir.deleteRecursively()
         // Remove the package folder once its last version is gone.
         dir.parentFile?.let { parent ->
-            if (parent.parentFile == appsDir && parent.listFiles()?.isEmpty() == true) parent.delete()
+            val grand = parent.parentFile
+            if ((grand == appsDir || grand == foldersDir) && parent.listFiles()?.isEmpty() == true) parent.delete()
         }
         return ok
     }
@@ -143,6 +163,14 @@ class BackupStorage(private val rootPath: () -> String) {
         }
 
         private fun idFormat() = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+
+        /** Stable, file-system safe folder name for a backed up path. */
+        fun folderKey(path: String): String {
+            val slug = path.trim('/').replace(Regex("[^A-Za-z0-9._-]+"), "_").takeLast(60).trim('_', '.')
+            val hash = java.security.MessageDigest.getInstance("SHA-256").digest(path.toByteArray(Charsets.UTF_8))
+                .take(5).joinToString("") { "%02x".format(it) }
+            return (if (slug.isEmpty()) "root" else slug) + "_" + hash
+        }
 
         fun isSafeName(name: String): Boolean =
             name.isNotEmpty() && name.length <= 255 && name != "." && name != ".." && !name.contains('/') && !name.contains('\u0000')

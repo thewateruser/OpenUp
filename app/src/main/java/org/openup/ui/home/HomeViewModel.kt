@@ -24,6 +24,7 @@ data class HomeCounts(
     val appBackups: Int = 0,
     val specials: Map<SpecialType, Int> = emptyMap(),
     val lastBackupTime: Long = 0,
+    val folders: Int = 0,
 )
 
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
@@ -53,10 +54,11 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         )
         viewModelScope.launch {
             _counts.value = withContext(Dispatchers.IO) {
-                if (!c.privileges.hasStorageAccess()) return@withContext HomeCounts()
+                val folders = c.settings.current.folders.size
+                if (!c.privileges.hasStorageAccess()) return@withContext HomeCounts(folders = folders)
                 val latest = c.storage.latestAppBackups()
                 val specials = SpecialType.entries.associateWith { c.storage.specialBackups(it).size }
-                HomeCounts(latest.size, specials, latest.values.maxOfOrNull { it.meta.backupTime } ?: 0)
+                HomeCounts(latest.size, specials, latest.values.maxOfOrNull { it.meta.backupTime } ?: 0, folders)
             }
         }
     }

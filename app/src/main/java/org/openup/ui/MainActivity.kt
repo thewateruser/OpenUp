@@ -19,6 +19,7 @@ import org.openup.container
 import org.openup.data.model.SpecialType
 import org.openup.ui.apps.AppDetailScreen
 import org.openup.ui.apps.AppsScreen
+import org.openup.ui.folders.FoldersScreen
 import org.openup.ui.home.HomeScreen
 import org.openup.ui.progress.ProgressScreen
 import org.openup.ui.schedule.ScheduleScreen
@@ -34,6 +35,7 @@ object Routes {
     const val PROGRESS = "progress"
     const val SCHEDULE = "schedule"
     const val SETTINGS = "settings"
+    const val FOLDERS = "folders"
 
     fun app(pkg: String) = "app/$pkg"
     fun special(type: SpecialType) = "special/${type.name}"
@@ -65,6 +67,7 @@ class MainActivity : ComponentActivity() {
                             onOpenProgress = { nav.navigate(Routes.PROGRESS) { launchSingleTop = true } },
                             onOpenSchedule = { nav.navigate(Routes.SCHEDULE) },
                             onOpenSettings = { nav.navigate(Routes.SETTINGS) },
+                            onOpenFolders = { nav.navigate(Routes.FOLDERS) },
                         )
                     }
                     composable(Routes.APPS) {
@@ -86,6 +89,12 @@ class MainActivity : ComponentActivity() {
                             .getOrDefault(SpecialType.MESSAGES)
                         SpecialScreen(
                             type = type,
+                            onBack = { nav.popBackStack() },
+                            onJobStarted = { nav.navigate(Routes.PROGRESS) { launchSingleTop = true } },
+                        )
+                    }
+                    composable(Routes.FOLDERS) {
+                        FoldersScreen(
                             onBack = { nav.popBackStack() },
                             onJobStarted = { nav.navigate(Routes.PROGRESS) { launchSingleTop = true } },
                         )

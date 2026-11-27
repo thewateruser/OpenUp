@@ -44,7 +44,10 @@ object FileOps {
     private fun attrs(p: Path): BasicFileAttributes =
         Files.readAttributes(p, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
 
-    /** Archives the contents of [root] (not the directory itself) into [out]. Does not close [out]. */
+    /**
+     * Archives the contents of [root] (not the directory itself) into [out]. Does not close [out].
+     * [excludes] are paths relative to [root] (e.g. "cache" or "Android/data") that are skipped.
+     */
     fun tar(root: File, out: OutputStream, excludes: Set<String>): TarStats {
         val stats = TarStats()
         val rootPath = root.toPath()
@@ -65,7 +68,8 @@ object FileOps {
             return
         }
         for (name in children) {
-            if (rel.isEmpty() && (name in excludes || name.startsWith(STAGING_PREFIX))) continue
+            if ((if (rel.isEmpty()) name else "$rel/$name") in excludes) continue
+            if (rel.isEmpty() && name.startsWith(STAGING_PREFIX)) continue
             val path = dir.resolve(name)
             val childRel = if (rel.isEmpty()) name else "$rel/$name"
             val a = try {
@@ -111,10 +115,12 @@ object FileOps {
     }
 
     /**
-     * Replaces the contents of [root] with the archive from [input]. Extraction happens in a staging
-     * directory inside [root]; the old contents are only removed once the archive was read fully.
+     * Restores the archive from [input] into [root]. Extraction happens in a staging directory
+     * inside [root], and [root] is only touched once the archive was read fully.
+     * Without [merge] the old contents are replaced; with [merge] files from the archive overwrite
+     * files of the same name and everything else in [root] is kept.
      */
-    fun untar(root: File, input: InputStream): TarStats {
+    fun untar(root: File, input: InputStream, merge: Boolean = false): TarStats {
         val stats = TarStats()
         val rootPath = root.toPath()
         if (!Files.isDirectory(rootPath)) {
@@ -125,19 +131,17 @@ object FileOps {
         try {
             extract(stage, input, stats)
             // Archive is complete and valid: swap the contents.
-            Files.newDirectoryStream(rootPath).use { s -> s.toList() }.forEach { child ->
-                if (child != stage) deleteRecursive(child)
-            }
-            Files.newDirectoryStream(stage).use { s -> s.toList() }.forEach { child ->
-                val dest = rootPath.resolve(child.fileName.toString())
-                try {
-                    Files.move(child, dest)
-                } catch (e: IOException) {
-                    copyRecursive(child, dest)
-                    deleteRecursive(child)
+            if (merge) {
+                mergeInto(stage, rootPath)
+            } else {
+                Files.newDirectoryStream(rootPath).use { s -> s.toList() }.forEach { child ->
+                    if (child != stage) deleteRecursive(child)
+                }
+                Files.newDirectoryStream(stage).use { s -> s.toList() }.forEach { child ->
+                    moveReplacing(child, rootPath.resolve(child.fileName.toString()))
                 }
             }
-            Files.delete(stage)
+            deleteRecursive(stage)
         } catch (t: Throwable) {
             try {
                 deleteRecursive(stage)
@@ -146,6 +150,38 @@ object FileOps {
             throw t
         }
         return stats
+    }
+
+    private fun moveReplacing(src: Path, dest: Path) {
+        if (Files.exists(dest, LinkOption.NOFOLLOW_LINKS)) deleteRecursive(dest)
+        try {
+            Files.move(src, dest)
+        } catch (e: IOException) {
+            copyRecursive(src, dest)
+            deleteRecursive(src)
+        }
+    }
+
+    /** Moves everything from [src] into [dest], merging directories and replacing files. */
+    private fun mergeInto(src: Path, dest: Path) {
+        Files.newDirectoryStream(src).use { s -> s.toList() }.forEach { child ->
+            val target = dest.resolve(child.fileName.toString())
+            val isDir = attrs(child).isDirectory
+            if (isDir && Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
+                mergeInto(child, target)
+            } else {
+                moveReplacing(child, target)
+            }
+        }
+    }
+
+    /** Names of the sub-directories of [dir] (symlinks are not followed), sorted for display. */
+    fun listDirectories(dir: File): List<String> {
+        val p = dir.toPath()
+        if (!Files.isDirectory(p)) return emptyList()
+        return Files.newDirectoryStream(p).use { s ->
+            s.filter { Files.isDirectory(it, LinkOption.NOFOLLOW_LINKS) }.map { it.fileName.toString() }
+        }.sortedWith(String.CASE_INSENSITIVE_ORDER)
     }
 
     private fun extract(stage: Path, input: InputStream, stats: TarStats) {

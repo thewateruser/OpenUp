@@ -69,7 +69,8 @@ import org.openup.ui.components.formatRelative
 import java.io.File
 
 private fun description(type: SpecialType) = when (type) {
-    SpecialType.MESSAGES -> "Backs up all SMS and MMS (including pictures and other attachments). " +
+    SpecialType.MESSAGES -> "Backs up all SMS and MMS (including pictures and other attachments), and RCS chats that your " +
+        "messaging app keeps in Android's message database. " +
         "Restoring skips messages that already exist, so it is safe to restore more than once."
     SpecialType.CALL_LOGS -> "Backs up your call history. Restoring skips calls that already exist."
     SpecialType.WALLPAPERS -> "Backs up the home and lock screen wallpapers."

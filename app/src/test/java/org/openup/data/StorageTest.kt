@@ -78,6 +78,33 @@ class StorageTest {
     }
 
     @Test
+    fun folderBackupsArePerFolder() {
+        val s = storage()
+        val a = "/storage/emulated/0/Documents"
+        val b = "/storage/emulated/0/Download"
+        assertTrue(s.folderDir(a) != s.folderDir(b))
+        assertEquals(s.folderDir(a), s.folderDir(a))
+        assertTrue(BackupStorage.isSafeName(BackupStorage.folderKey("/storage/emulated/0/a b/ü/..")))
+        for ((path, ids) in listOf(a to listOf("20250101-000000", "20260101-000000"), b to listOf("20240101-000000"))) {
+            for (id in ids) {
+                val d = File(s.folderDir(path), id).apply { mkdirs() }
+                s.writeSpecialMeta(d, org.openup.data.model.SpecialBackupMeta(
+                    type = org.openup.data.model.FolderBackup.TYPE,
+                    backupTime = id.take(4).toLong(),
+                    itemCount = 1,
+                    summary = "1 file",
+                    files = emptyList(),
+                    extras = mapOf(org.openup.data.model.FolderBackup.FOLDER_PATH_KEY to path),
+                ))
+            }
+        }
+        val all = s.folderBackups()
+        assertEquals(listOf(a, a, b), all.map { it.path })
+        s.prune(s.folderDir(a), 1)
+        assertEquals(listOf(a, b), s.folderBackups().map { it.path })
+    }
+
+    @Test
     fun unreadableMetadataIsIgnored() {
         val s = storage()
         val dir = s.appDir("com.example")

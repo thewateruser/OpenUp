@@ -20,6 +20,8 @@ class AppRestoreEngine(
     private val apps: InstalledApps,
     private val shell: ShellClient,
 ) {
+    private val settingsOps = AppSettingsOps(shell)
+
     suspend fun restore(backup: AppBackup, parts: AppParts, crypto: CryptoSession?, progress: ProgressSink): TaskOutcome {
         val meta = backup.meta
         val pkg = meta.packageName
@@ -75,6 +77,14 @@ class AppRestoreEngine(
             val (granted, failed) = grantPermissions(pkg, meta.permissions)
             if (granted > 0) done.add("$granted permission(s)")
             if (failed > 0) warnings.add("$failed permission(s) could not be granted")
+        }
+
+        val appSettings = meta.settings
+        if (parts.permissions && appSettings != null && !appSettings.isEmpty && installedNow != null) {
+            progress.step("Restoring app settings")
+            val (applied, failed) = settingsOps.restore(pkg, appSettings)
+            if (applied > 0) done.add("$applied app setting(s)")
+            if (failed > 0) warnings.add("$failed app setting(s) could not be restored")
         }
 
         val summary = if (done.isEmpty()) "Nothing to restore for the selected parts" else "Restored " + done.joinToString(", ")

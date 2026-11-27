@@ -70,6 +70,7 @@ fun ScheduleScreen(onBack: () -> Unit) {
             SwitchRow("Apps", "Uses the default parts from Settings. Needs Shizuku to be running.", s.apps, enabled = s.enabled) { v -> update { it.copy(apps = v) } }
             SwitchRow("Only new or updated apps", "Skip apps whose version did not change since their last backup", s.onlyChangedApps, enabled = s.enabled && s.apps) { v -> update { it.copy(onlyChangedApps = v) } }
             SwitchRow("Include system apps", null, s.includeSystemApps, enabled = s.enabled && s.apps) { v -> update { it.copy(includeSystemApps = v) } }
+            SwitchRow("Folders", "The folders added on the Folders screen", s.folders, enabled = s.enabled) { v -> update { it.copy(folders = v) } }
             SwitchRow("Messages", null, s.messages, enabled = s.enabled) { v -> update { it.copy(messages = v) } }
             SwitchRow("Call logs", null, s.callLogs, enabled = s.enabled) { v -> update { it.copy(callLogs = v) } }
             SwitchRow("Wallpapers", null, s.wallpapers, enabled = s.enabled) { v -> update { it.copy(wallpapers = v) } }

@@ -192,6 +192,12 @@ class JobManager(private val c: AppContainer) {
                     }
                 }
             }
+            is JobTask.BackupFolder -> c.folders.backup(task.path, crypto, sink)
+            is JobTask.RestoreFolder -> {
+                val backup = c.storage.readFolderBackup(File(task.backupDir))
+                    ?: throw IOException("The selected backup no longer exists or is unreadable")
+                c.folders.restore(backup, crypto, sink)
+            }
             is JobTask.RestoreSpecial -> {
                 ensureSpecialPermissions(task.type, restore = true)
                 val backup = c.storage.readSpecialBackup(task.type, File(task.backupDir))

@@ -61,6 +61,7 @@ class ScheduledBackupWorker(context: Context, params: WorkerParameters) : Corout
                 notes.add("App backups were skipped because Shizuku is not running.")
             }
         }
+        if (s.folders) c.settings.current.folders.forEach { tasks.add(JobTask.BackupFolder(it)) }
         if (s.messages) tasks.add(JobTask.BackupSpecial(SpecialType.MESSAGES))
         if (s.callLogs) tasks.add(JobTask.BackupSpecial(SpecialType.CALL_LOGS))
         if (s.wallpapers) tasks.add(JobTask.BackupSpecial(SpecialType.WALLPAPERS))

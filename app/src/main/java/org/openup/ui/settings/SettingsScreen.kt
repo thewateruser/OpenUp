@@ -113,7 +113,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             SwitchRow("External data", null, s.parts.extData) { v -> c.settings.update { it.copy(parts = it.parts.copy(extData = v)) } }
             SwitchRow("Expansion files (OBB)", null, s.parts.obb) { v -> c.settings.update { it.copy(parts = it.parts.copy(obb = v)) } }
             SwitchRow("Media", null, s.parts.media) { v -> c.settings.update { it.copy(parts = it.parts.copy(media = v)) } }
-            SwitchRow("Permissions", null, s.parts.permissions) { v -> c.settings.update { it.copy(parts = it.parts.copy(permissions = v)) } }
+            SwitchRow("Permissions & app settings", null, s.parts.permissions) { v -> c.settings.update { it.copy(parts = it.parts.copy(permissions = v)) } }
 
             SectionTitle("Appearance")
             FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -140,8 +140,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             )
             Text(
                 "Without root, Android does not let any app read other apps' private data (/data/data). " +
-                    "OpenUp backs up everything that is reachable with Shizuku: APKs, external data, OBB, media, permissions, " +
-                    "messages, call logs, wallpapers and Wi-Fi networks.",
+                    "OpenUp backs up everything that is reachable with Shizuku: APKs, external data, OBB, media, permissions and " +
+                    "app settings, folders, messages, call logs, wallpapers and Wi-Fi networks.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).padding(bottom = 24.dp),

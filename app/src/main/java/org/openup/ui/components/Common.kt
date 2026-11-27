@@ -180,10 +180,15 @@ fun PartsDialog(
                 CheckRow("External data", "Android/data folder", parts.extData, avail.extData) { parts = parts.copy(extData = it) }
                 CheckRow("Expansion files", "Android/obb folder", parts.obb, avail.obb) { parts = parts.copy(obb = it) }
                 CheckRow("Media", "Android/media folder", parts.media, avail.media) { parts = parts.copy(media = it) }
-                CheckRow("Permissions", if (restore) "Grant the runtime permissions the app had" else "Remember granted runtime permissions", parts.permissions, avail.permissions) { parts = parts.copy(permissions = it) }
+                CheckRow(
+                    "Permissions & app settings",
+                    "Runtime permissions, usage access, accessibility service, battery optimisation and other special access",
+                    parts.permissions,
+                    avail.permissions,
+                ) { parts = parts.copy(permissions = it) }
                 Spacer(Modifier.padding(4.dp))
                 Text(
-                    "Private app data (/data/data) cannot be accessed without root.",
+                    "Private app data (/data/data), notification settings and the SSAID cannot be accessed without root.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

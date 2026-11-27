@@ -273,20 +273,28 @@ class MessagesEngine(
         if (pduCols.isEmpty()) throw IOException("MMS are not accessible")
         val allowed = MMS_COLUMNS.intersect(pduCols)
         val existing = HashSet<String>()
-        cr.query(Telephony.Mms.CONTENT_URI, arrayOf(Telephony.Mms.DATE, Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_ID, Telephony.Mms.TRANSACTION_ID), null, null, null)?.use { c ->
-            while (c.moveToNext()) existing.add(mmsKey(c.getLong(0), c.getInt(1), c.getString(2) ?: c.getString(3)))
+        cr.query(
+            Telephony.Mms.CONTENT_URI,
+            arrayOf(Telephony.Mms._ID, Telephony.Mms.DATE, Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_ID, Telephony.Mms.TRANSACTION_ID),
+            null, null, null,
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val mid = c.getString(3)?.takeIf { it.isNotEmpty() } ?: c.getString(4)?.takeIf { it.isNotEmpty() }
+                // Messages without a message id (e.g. RCS chats stored as MMS, drafts) are told apart
+                // by their content.
+                val content = if (mid == null) mmsContentKey(existingParts(c.getLong(0))) else null
+                existing.add(mmsKey(c.getLong(1), c.getInt(2), mid, content))
+            }
         }
         file.bufferedReader().useLines { lines ->
             for (line in lines) {
                 if (line.isBlank()) continue
                 progress.bytes(1)
                 val o = JSONObject(line)
-                val mid = when {
-                    o.has(Telephony.Mms.MESSAGE_ID) -> o.getString(Telephony.Mms.MESSAGE_ID)
-                    o.has(Telephony.Mms.TRANSACTION_ID) -> o.getString(Telephony.Mms.TRANSACTION_ID)
-                    else -> null
-                }
-                if (!existing.add(mmsKey(o.optLong(Telephony.Mms.DATE), o.optInt(Telephony.Mms.MESSAGE_BOX), mid))) {
+                val mid = o.optString(Telephony.Mms.MESSAGE_ID, "").takeIf { it.isNotEmpty() }
+                    ?: o.optString(Telephony.Mms.TRANSACTION_ID, "").takeIf { it.isNotEmpty() }
+                val content = if (mid == null) mmsContentKey(jsonParts(o)) else null
+                if (!existing.add(mmsKey(o.optLong(Telephony.Mms.DATE), o.optInt(Telephony.Mms.MESSAGE_BOX), mid, content))) {
                     counts.duplicates++
                     continue
                 }
@@ -356,7 +364,30 @@ class MessagesEngine(
     private fun smsKey(date: Long, type: Int, address: String?, body: String?) =
         "$date|$type|${address.orEmpty()}|${body?.hashCode() ?: 0}|${body?.length ?: -1}"
 
-    private fun mmsKey(date: Long, box: Int, mid: String?) = "$date|$box|${mid.orEmpty()}"
+    private fun mmsKey(date: Long, box: Int, mid: String?, content: String?) =
+        if (mid != null) "id|$date|$box|$mid" else "content|$date|$box|${content.orEmpty()}"
+
+    private fun existingParts(mmsId: Long): List<MmsPartKey> {
+        val result = ArrayList<MmsPartKey>()
+        try {
+            cr.query(Uri.parse("content://mms/$mmsId/part"), arrayOf("seq", "ct", "text", "cl", "name"), null, null, null)?.use { p ->
+                while (p.moveToNext()) {
+                    result.add(MmsPartKey(p.getInt(0), p.getString(1), p.getString(2), p.getString(3), p.getString(4)))
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return result
+    }
+
+    private fun jsonParts(o: JSONObject): List<MmsPartKey> {
+        val parts = o.optJSONArray(KEY_PARTS) ?: return emptyList()
+        return (0 until parts.length()).mapNotNull { i ->
+            val p = parts.optJSONObject(i) ?: return@mapNotNull null
+            fun str(k: String) = if (p.has(k) && !p.isNull(k)) p.getString(k) else null
+            MmsPartKey(p.optInt("seq"), str("ct"), str("text"), str("cl"), str("name"))
+        }
+    }
 
     companion object {
         private val CANONICAL_URI: Uri = Uri.parse("content://mms-sms/canonical-addresses")

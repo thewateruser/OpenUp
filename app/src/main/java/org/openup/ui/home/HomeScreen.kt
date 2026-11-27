@@ -76,6 +76,7 @@ fun HomeScreen(
     onOpenProgress: () -> Unit,
     onOpenSchedule: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenFolders: () -> Unit,
     vm: HomeViewModel = viewModel(),
 ) {
     val context = LocalContext.current
@@ -166,6 +167,13 @@ fun HomeScreen(
             }
             item { CategoryCard(Icons.Outlined.Sms, "Messages", specialText(counts, SpecialType.MESSAGES, "SMS and MMS")) { onOpenSpecial(SpecialType.MESSAGES) } }
             item { CategoryCard(Icons.Outlined.Call, "Call logs", specialText(counts, SpecialType.CALL_LOGS, "Call history")) { onOpenSpecial(SpecialType.CALL_LOGS) } }
+            item {
+                CategoryCard(
+                    Icons.Outlined.Folder, "Folders",
+                    if (counts.folders > 0) "${counts.folders} folder${if (counts.folders == 1) "" else "s"}" else "Any folder on your storage",
+                    onOpenFolders,
+                )
+            }
             item { CategoryCard(Icons.Outlined.Wallpaper, "Wallpapers", specialText(counts, SpecialType.WALLPAPERS, "Home and lock screen")) { onOpenSpecial(SpecialType.WALLPAPERS) } }
             item { CategoryCard(Icons.Outlined.Wifi, "Wi-Fi", specialText(counts, SpecialType.WIFI, "Saved networks and passwords")) { onOpenSpecial(SpecialType.WIFI) } }
             item { CategoryCard(Icons.Outlined.Schedule, "Schedule", "Automatic backups", onOpenSchedule) }

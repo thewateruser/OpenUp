@@ -82,6 +82,45 @@ class FileOpsTest {
     }
 
     @Test
+    fun mergeKeepsUnrelatedFilesAndOverwritesSameNames() {
+        val src = tmp.newFolder("srcMerge")
+        File(src, "dir").mkdirs()
+        File(src, "dir/a.txt").writeText("new a")
+        File(src, "top.txt").writeText("new top")
+        val (data, _) = archive(src)
+        val dest = tmp.newFolder("destMerge")
+        File(dest, "dir").mkdirs()
+        File(dest, "dir/a.txt").writeText("old a")
+        File(dest, "dir/keep.txt").writeText("keep")
+        File(dest, "other.txt").writeText("other")
+        FileOps.untar(dest, ByteArrayInputStream(data), merge = true)
+        assertEquals("new a", File(dest, "dir/a.txt").readText())
+        assertEquals("keep", File(dest, "dir/keep.txt").readText())
+        assertEquals("other", File(dest, "other.txt").readText())
+        assertEquals("new top", File(dest, "top.txt").readText())
+        assertNull(dest.listFiles()!!.firstOrNull { it.name.startsWith(FileOps.STAGING_PREFIX) })
+    }
+
+    @Test
+    fun nestedExcludesAndDirectoryListing() {
+        val src = tmp.newFolder("srcEx")
+        File(src, "keep/inner").mkdirs()
+        File(src, "keep/inner/x").writeText("x")
+        File(src, "OpenUp/apps").mkdirs()
+        File(src, "OpenUp/apps/big").writeText("backup")
+        File(src, "a/b/skip").mkdirs()
+        File(src, "a/b/skip/y").writeText("y")
+        File(src, "a/b/z").writeText("z")
+        val (data, stats) = archive(src, setOf("OpenUp", "a/b/skip"))
+        assertEquals(2, stats.files)
+        val dest = tmp.newFolder("destEx")
+        FileOps.untar(dest, ByteArrayInputStream(data))
+        assertEquals(setOf("keep/inner/x", "a/b/z"), contents(dest).keys)
+        assertEquals(listOf("a", "keep", "OpenUp"), FileOps.listDirectories(src))
+        assertTrue(FileOps.listDirectories(File(src, "missing")).isEmpty())
+    }
+
+    @Test
     fun untarCreatesMissingRoot() {
         val src = tmp.newFolder("src2")
         tree(src)

@@ -244,7 +244,7 @@ fun AppDetailScreen(packageName: String, onBack: () -> Unit, onJobStarted: () ->
                 extData = d.backup.meta.extData != null,
                 obb = d.backup.meta.obb != null,
                 media = d.backup.meta.media != null,
-                permissions = d.backup.meta.permissions.isNotEmpty(),
+                permissions = d.backup.meta.hasPermissionsOrSettings,
             ),
             confirm = "Restore",
             onConfirm = { if (vm.restore(d.backup, it)) onJobStarted() else startFailed++ },
@@ -314,6 +314,10 @@ private fun BackupCard(b: AppBackup, enabled: Boolean, onRestore: () -> Unit, on
                 m.obb?.let { PartChip("OBB ${formatBytes(context, it.stored.originalSize)}") }
                 m.media?.let { PartChip("Media ${formatBytes(context, it.stored.originalSize)}") }
                 if (m.permissions.isNotEmpty()) PartChip("${m.permissions.size} permissions")
+                m.settings?.takeIf { !it.isEmpty }?.let { s ->
+                    val n = s.appOps.size + s.accessibilityServices.size + if (s.batteryOptimizationExempt) 1 else 0
+                    PartChip("$n app settings")
+                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onDelete) { Text("Delete") }

@@ -15,9 +15,11 @@ and restore much more than a normal app — **without root**.
 | **External data** (`Android/data/<app>`) | ✅ | ✅ | Read and written by the Shizuku shell process. Cache folders can be skipped. |
 | **Expansion files / OBB** (`Android/obb/<app>`) | ✅ | ✅ | |
 | **Media** (`Android/media/<app>`) | ✅ | ✅ | |
-| **Runtime permissions** | ✅ | ✅ | Granted permissions are recorded and granted again with `pm grant`. |
-| **Messages** (SMS + MMS with attachments) | ✅ | ✅ | No need to become the default SMS app: OpenUp allows itself to write SMS through Shizuku. Duplicates are skipped. |
+| **Permissions & app settings** | ✅ | ✅ | Runtime permissions, usage access, accessibility services, battery optimisation (unrestricted/restricted) and other special access (display over other apps, modify system settings, install unknown apps, all files access, alarms, picture-in-picture, media management, full-screen notifications). Notification settings and the SSAID need root. |
+| **Batch restore** | ✅ | ✅ | Any number of apps at once, without a confirmation per app. |
+| **Messages** (SMS, MMS with attachments, RCS) | ✅ | ✅ | No need to become the default SMS app: OpenUp allows itself to write SMS through Shizuku. RCS chats are included when the messaging app keeps them in Android's message database. Duplicates are skipped. |
 | **Call logs** | ✅ | ✅ | Duplicates are skipped. Voicemail entries cannot be restored by third-party apps. |
+| **Folders** | ✅ | ✅ | Any folder on internal storage or an SD card, including inside `Android/data` and `Android/obb`. Restores merge into the folder (same names are overwritten, other files kept). Folders outside `Android/data`/`obb` also work without Shizuku. |
 | **Wallpapers** (home + lock) | ✅ | ✅ | Live wallpapers are recorded by name only. |
 | **Wi-Fi networks** (with passwords) | ✅ | ✅ | Uses the Wi-Fi service as the shell user (which may read credentials). Enterprise/EAP networks are skipped. Swift Backup needs root for this. |
 | Private app data (`/data/data`) | ❌ | ❌ | Android does not allow this without root — not even for `adb`. |
@@ -30,7 +32,7 @@ and restore much more than a normal app — **without root**.
 - **Encryption** with a password: AES-256-GCM in authenticated 1 MiB chunks (the STREAM construction), PBKDF2-HMAC-SHA256 (600 000 iterations) + HKDF per file. Tampering, truncation and reordering are detected.
 - End-to-end integrity: every backup file stores the SHA-256 of its content, which is verified on restore. APKs are verified before the install session is committed.
 - Safe restores: archives are extracted into a staging folder first, so existing data is only replaced after the whole archive was read successfully.
-- **Scheduled backups** (WorkManager): apps (all or only new/updated), messages, call logs, wallpapers, Wi-Fi.
+- **Scheduled backups** (WorkManager): apps (all or only new/updated), folders, messages, call logs, wallpapers, Wi-Fi.
 - App list with search, filters (user/system/backed up/not backed up/outdated/uninstalled with backup) and sorting.
 - App actions: launch, app info, force stop, enable/disable, clear data, uninstall.
 - Material 3 UI with dynamic colors and dark theme.
@@ -76,6 +78,7 @@ OpenUp/
   calllogs/<id>/  meta.json, calllogs.jsonl[.zst][.enc]
   wallpapers/<id>/ meta.json, home.img[.enc], lock.img[.enc]
   wifi/<id>/      meta.json, wifi.json[.zst][.enc]
+  folders/<name>_<hash>/<id>/ meta.json (original path), folder.tar[.zst][.enc]
 ```
 
 Unencrypted archives are standard POSIX tar files (compressed with standard zstd), so they can be

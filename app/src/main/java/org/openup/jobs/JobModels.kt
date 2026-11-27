@@ -23,6 +23,16 @@ sealed interface JobTask {
         override val needsShizuku get() = type == SpecialType.WIFI
     }
 
+    data class BackupFolder(val path: String) : JobTask {
+        override val title get() = path.substringAfterLast('/').ifEmpty { path }
+        override val needsShizuku get() = false // FolderEngine decides; most folders work without
+    }
+
+    data class RestoreFolder(val path: String, val backupDir: String) : JobTask {
+        override val title get() = path.substringAfterLast('/').ifEmpty { path }
+        override val needsShizuku get() = false
+    }
+
     data class RestoreSpecial(val type: SpecialType, val backupDir: String) : JobTask {
         override val title get() = type.title
         override val needsShizuku get() = type == SpecialType.WIFI

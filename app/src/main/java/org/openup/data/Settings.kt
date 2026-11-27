@@ -30,6 +30,7 @@ data class ScheduleSettings(
     val callLogs: Boolean = true,
     val wallpapers: Boolean = false,
     val wifi: Boolean = false,
+    val folders: Boolean = true,
 )
 
 data class AppSettings(
@@ -43,6 +44,8 @@ data class AppSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
     val schedule: ScheduleSettings = ScheduleSettings(),
+    /** Folders (absolute paths) that the user wants to back up. */
+    val folders: List<String> = emptyList(),
 )
 
 /** Persistent user settings, exposed as a [StateFlow]. */
@@ -84,7 +87,14 @@ class SettingsRepository(context: Context) {
                 callLogs = prefs.getBoolean("sch_calllogs", s.callLogs),
                 wallpapers = prefs.getBoolean("sch_wallpapers", s.wallpapers),
                 wifi = prefs.getBoolean("sch_wifi", s.wifi),
+                folders = prefs.getBoolean("sch_folders", s.folders),
             ),
+            folders = prefs.getString("folders", null)?.let { raw ->
+                runCatching {
+                    val arr = org.json.JSONArray(raw)
+                    List(arr.length()) { arr.getString(it) }
+                }.getOrNull()
+            } ?: emptyList(),
         )
     }
 
@@ -115,6 +125,8 @@ class SettingsRepository(context: Context) {
             .putBoolean("sch_calllogs", n.schedule.callLogs)
             .putBoolean("sch_wallpapers", n.schedule.wallpapers)
             .putBoolean("sch_wifi", n.schedule.wifi)
+            .putBoolean("sch_folders", n.schedule.folders)
+            .putString("folders", org.json.JSONArray(n.folders.distinct()).toString())
             .apply()
         _state.value = load()
     }

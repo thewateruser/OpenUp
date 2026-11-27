@@ -36,6 +36,23 @@ data class DataPart(
     val skipped: Int = 0,
 )
 
+/** An app-op mode. [uid] is true for a uid-wide mode (set with `appops set --uid`). */
+@Serializable
+data class AppOpMode(val op: String, val mode: String, val uid: Boolean = false)
+
+/** Special app access and settings that Shizuku can read and write. */
+@Serializable
+data class AppSettingsBackup(
+    /** Usage access, battery restriction, display over other apps, modify system settings, … */
+    val appOps: List<AppOpMode> = emptyList(),
+    /** Enabled accessibility services (flattened component names) belonging to the app. */
+    val accessibilityServices: List<String> = emptyList(),
+    /** "Unrestricted" battery usage (exempt from battery optimisation). */
+    val batteryOptimizationExempt: Boolean = false,
+) {
+    val isEmpty get() = appOps.isEmpty() && accessibilityServices.isEmpty() && !batteryOptimizationExempt
+}
+
 @Serializable
 data class AppBackupMeta(
     val formatVersion: Int = FORMAT_VERSION,
@@ -56,7 +73,10 @@ data class AppBackupMeta(
     val obb: DataPart? = null,
     val media: DataPart? = null,
     val permissions: List<String> = emptyList(),
+    val settings: AppSettingsBackup? = null,
 ) {
+    val hasPermissionsOrSettings get() = permissions.isNotEmpty() || settings?.isEmpty == false
+
     val totalStoredSize: Long
         get() = apks.sumOf { it.stored.storedSize } + listOfNotNull(extData, obb, media).sumOf { it.stored.storedSize }
     val encrypted: Boolean
@@ -91,6 +111,16 @@ data class SpecialBackupMeta(
 
 /** An app backup version found on disk. */
 data class AppBackup(val id: String, val dir: java.io.File, val meta: AppBackupMeta)
+
+/** A backup of a user chosen folder. The original location is stored in the metadata. */
+data class FolderBackup(val id: String, val dir: java.io.File, val meta: SpecialBackupMeta) {
+    val path: String? get() = meta.extras[FOLDER_PATH_KEY]
+
+    companion object {
+        const val TYPE = "folder"
+        const val FOLDER_PATH_KEY = "path"
+    }
+}
 
 /** A special (non app) backup found on disk. */
 data class SpecialBackup(val type: SpecialType, val id: String, val dir: java.io.File, val meta: SpecialBackupMeta)

@@ -9,6 +9,7 @@ import org.openup.data.apps.AppBackupEngine
 import org.openup.data.apps.AppRestoreEngine
 import org.openup.data.apps.InstalledApps
 import org.openup.data.special.CallLogEngine
+import org.openup.data.special.FolderEngine
 import org.openup.data.special.MessagesEngine
 import org.openup.data.special.WallpaperEngine
 import org.openup.data.special.WifiEngine
@@ -45,6 +46,7 @@ class AppContainer(val app: Application) {
     val callLogs = CallLogEngine(app, settings, storage)
     val wallpapers = WallpaperEngine(app, settings, storage)
     val wifi = WifiEngine(settings, storage, shell)
+    val folders = FolderEngine(settings, storage, shell, shizuku)
     val jobs = JobManager(this)
     val schedule = ScheduleManager(app, settings)
 }
